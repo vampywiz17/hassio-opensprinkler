@@ -14,6 +14,8 @@ This Add-on allows you to Install OpenSprinkler to Home Assistant.
 
 Only need to setup the access port. Default: 5557
 
+You access web interface at: http://ha_hostname:5557 (default)
+
 Persistent files are saved to addon_configs folder. If you delete these files, your config are lost!
 
 ## Home Assistant Integration
