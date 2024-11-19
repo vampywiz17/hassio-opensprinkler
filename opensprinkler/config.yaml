@@ -14,5 +14,6 @@ ports:
 map:
   - type: addon_config
     read_only: False
+    path: /data
 options: {}
 schema: {}
