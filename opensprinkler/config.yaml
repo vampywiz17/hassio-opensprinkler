@@ -10,6 +10,6 @@ slug: opensprinkler
 startup: services
 boot: auto
 ports:
-  5557/tcp: 80
+  80/tcp: 5557
 options: {}
 schema: {}
