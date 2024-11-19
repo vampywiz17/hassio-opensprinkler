@@ -12,6 +12,6 @@ boot: auto
 ports:
   80/tcp: 5557
 map:
-  - data:rw
+  - addon_config:rw
 options: {}
 schema: {}
