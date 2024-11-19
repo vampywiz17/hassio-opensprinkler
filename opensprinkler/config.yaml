@@ -11,8 +11,8 @@ startup: services
 boot: auto
 ports:
   80/tcp: 5557
-#map:
-#  - type: addon_config
-#    read_only: False
+map:
+  - type: addon_config
+    read_only: False
 options: {}
 schema: {}
