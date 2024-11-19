@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "slug": "opensprinkler",
   "description": "Home Assistant add-on for OpenSprinkler using vampywiz17/opensprinkler image.",
+  "url": "https://github.com/vampywiz17/hassio-opensprinkler/tree/main/opensprinkler",
   "arch": [
     "amd64",
     "i386"
