@@ -1,4 +1,3 @@
-# https://developers.home-assistant.io/docs/add-ons/repository#repository-configuration
-name: Example Home Assistant add-on repository
-url: 'https://github.com/home-assistant/addons-example'
-maintainer: Awesome Maintainer <awesome@example.com>
+name: Home Assistant add-on for OpenSprinkler using vampywiz17/opensprinkler image.
+url: 'https://github.com/vampywiz17/hassio-opensprinkler'
+maintainer: Norbert Suto <suto.norbert@gmail.com>
