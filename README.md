@@ -10,7 +10,7 @@ Add-on documentation: <https://developers.home-assistant.io/docs/add-ons>
 
 This repository contains the following add-ons
 
-### [Example add-on](./opensprinkler)
+### [OpenSprinkler add-on](./opensprinkler)
 
 ![Supports amd64 Architecture][amd64-shield]
 ![Supports i386 Architecture][i386-shield]
