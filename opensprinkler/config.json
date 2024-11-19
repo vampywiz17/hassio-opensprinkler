@@ -1,0 +1,18 @@
+{
+  "name": "OpenSprinkler",
+  "version": "0.0.1",
+  "slug": "opensprinkler",
+  "description": "Home Assistant add-on for OpenSprinkler using vampywiz17/opensprinkler image.",
+  "arch": [
+    "amd64",
+    "i386"
+  ],
+  "startup": "services",
+  "boot": "auto",
+  "ports": {
+    "5557/tcp": 5557
+  },
+  "options": {},
+  "schema": {},
+  "image": "docker.io/vampywiz17/opensprinkler:latest"
+}
