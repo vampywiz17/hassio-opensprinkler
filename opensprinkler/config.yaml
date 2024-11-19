@@ -11,6 +11,8 @@ startup: services
 boot: auto
 ports:
   80/tcp: 5557
+ports_description:
+  80/tcp: Web interface
 map:
   - type: addon_config
     read_only: False
