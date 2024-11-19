@@ -2,7 +2,7 @@
 name: OpenSprinkler
 description: Home Assistant add-on for OpenSprinkler using vampywiz17/opensprinkler image.
 url: https://github.com/vampywiz17/hassio-opensprinkler
-image: vampywiz17/opensprinkler:latest
+image: vampywiz17/opensprinkler
 arch: [ amd64, i386 ]
 
 version: 0.0.1
