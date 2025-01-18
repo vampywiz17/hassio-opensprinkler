@@ -14,6 +14,7 @@ This repository contains the following add-ons
 
 ![Supports amd64 Architecture][amd64-shield]
 ![Supports i386 Architecture][i386-shield]
+![Supports armv7 Architecture][armv7-shield]
 
 [amd64-shield]: https://img.shields.io/badge/amd64-yes-green.svg
 [i386-shield]: https://img.shields.io/badge/i386-yes-green.svg
