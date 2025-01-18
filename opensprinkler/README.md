@@ -4,7 +4,7 @@ Automate and Access Sprinklers from Anywhere
 Keeping your lawn and flowers beautiful doesn't have to be stressful. OpenSprinkler unchains you from your sprinkler or irrigation control box, enabling you to program, run, or stop zones at any time from anywhere.
 Whether you are at your desktop, laptop, tablet or phone; whether you are at home, office, or traveling on the road, you can access OpenSprinkler through any modern browser; or use our free apps available for all mobile platforms.
 
-![Supports amd64 Architecture][amd64-shield] ![Supports i386 Architecture][i386-shield]
+![Supports amd64 Architecture][amd64-shield] ![Supports i386 Architecture][i386-shield] ![Supports armv7 Architecture][armv7-shield]
 
 ## About
 
@@ -26,3 +26,4 @@ https://github.com/vinteo/hass-opensprinkler
 
 [amd64-shield]: https://img.shields.io/badge/amd64-yes-green.svg
 [i386-shield]: https://img.shields.io/badge/i386-yes-green.svg
+[armv7-shield]: https://img.shields.io/badge/armv7-yes-green.svg
