@@ -13,9 +13,5 @@ ports:
   8080/tcp: 5557
 ports_description:
   8080/tcp: Web interface
-map:
-  - type: addon_config
-    read_only: False
-    path: /data
 options: {}
 schema: {}
