@@ -36,6 +36,23 @@ https://www.athom.tech/blank-1/homekit-8ch-inching-self-lock-relay
 
 ![image](https://github.com/user-attachments/assets/cc10de67-4a20-4c97-b3ef-dd8cb4f3d079)
 
+If you have a zigbee relay, also a good option to use OpenSprinkler integration with HA automation or switch template. For example:
+```
+switch:
+  - platform: template
+    switches:
+      zigbee_relay:
+        friendly_name: "Zigbee Relay"
+        value_template: "{{ is_state('binary_sensor.elso_zona_station_running', 'on') }}"
+        turn_on:
+          service: switch.turn_on
+          target:
+            entity_id: switch.zigbee_relay
+        turn_off:
+          service: switch.turn_off
+          target:
+            entity_id: switch.zigbee_relay
+```
 
 [amd64-shield]: https://img.shields.io/badge/amd64-yes-green.svg
 [armv7-shield]: https://img.shields.io/badge/armv7-yes-green.svg
