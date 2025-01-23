@@ -4,6 +4,7 @@ description: Home Assistant add-on for OpenSprinkler using vampywiz17/opensprink
 url: https://github.com/vampywiz17/hassio-opensprinkler
 image: vampywiz17/opensprinkler
 arch: [ amd64, armv7 ]
+ingress: true
 
 version: 0.0.3
 slug: opensprinkler
