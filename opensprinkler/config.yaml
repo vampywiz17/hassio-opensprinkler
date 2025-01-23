@@ -5,7 +5,7 @@ url: https://github.com/vampywiz17/hassio-opensprinkler
 image: vampywiz17/opensprinkler
 arch: [ amd64, armv7 ]
 ingress: true
-ingress_port: 557
+ingress_port: 5557
 panel_icon: "mdi:sprinkler-variant"
 
 version: 0.0.3
