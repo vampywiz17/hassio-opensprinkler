@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.4 (OpenSprinkler 2.3.3(173))
+
+- Add ingress option to addon
+
 ## 0.0.3 (OpenSprinkler 2.3.3(173))
 
 - Replace codebase to https://opensprinklershop.de modded firmware. it support Analog sensor API
