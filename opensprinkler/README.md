@@ -24,5 +24,18 @@ You able to use it with Home Assistant following integration:
 
 https://github.com/vinteo/hass-opensprinkler
 
+## Suggested hardware
+
+The best option to control outdoor valves and pump, a Tasmota based relay board. You able to control it with http/https web request (work separately from Home Assistant).
+
+![image](https://github.com/user-attachments/assets/53aa72ae-6bcc-4ca7-bf64-956bccdd82ee)
+
+The Athom boards are very popular, it came from pre-flashed Tasmota. But you able to use any similar device.
+
+https://www.athom.tech/blank-1/homekit-8ch-inching-self-lock-relay
+
+![image](https://github.com/user-attachments/assets/cc10de67-4a20-4c97-b3ef-dd8cb4f3d079)
+
+
 [amd64-shield]: https://img.shields.io/badge/amd64-yes-green.svg
 [armv7-shield]: https://img.shields.io/badge/armv7-yes-green.svg
