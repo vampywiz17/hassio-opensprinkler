@@ -32,7 +32,7 @@ The best option to control outdoor valves and pump, a Tasmota based relay board.
 
 The Athom boards are very popular, it came from pre-flashed Tasmota. But you able to use any similar device.
 
-https://www.athom.tech/blank-1/homekit-8ch-inching-self-lock-relay
+https://www.athom.tech/blank-1/8ch-inching-self-lock-relay
 
 <div align="center">
     <img src="https://github.com/user-attachments/assets/cc10de67-4a20-4c97-b3ef-dd8cb4f3d079" alt="image">
