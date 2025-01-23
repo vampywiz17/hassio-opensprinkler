@@ -34,7 +34,9 @@ The Athom boards are very popular, it came from pre-flashed Tasmota. But you abl
 
 https://www.athom.tech/blank-1/homekit-8ch-inching-self-lock-relay
 
-![image](https://github.com/user-attachments/assets/cc10de67-4a20-4c97-b3ef-dd8cb4f3d079)
+<div align="center">
+    <img src="https://github.com/user-attachments/assets/cc10de67-4a20-4c97-b3ef-dd8cb4f3d079" alt="image">
+</div>
 
 If you have a zigbee relay, also a good option to use OpenSprinkler integration with HA automation or switch template. For example:
 ```
