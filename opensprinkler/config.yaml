@@ -5,7 +5,7 @@ url: https://github.com/vampywiz17/hassio-opensprinkler
 image: vampywiz17/opensprinkler
 arch: [ amd64, armv7 ]
 
-version: latest
+version: 0.0.3
 slug: opensprinkler
 startup: services
 boot: auto
