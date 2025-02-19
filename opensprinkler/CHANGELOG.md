@@ -7,7 +7,7 @@
    - Filter when logging: Data identical to the previous one is no longer saved
    - BugFix: Empty MQTT filter resulted in no value.
    - BugFix: OSPi RS485 SMT100 read error
-- Undocumented change: Firmware version 174 can control the internal rain/soil sensor sn1/sn2. But not “Flow” or “Program Switch”
+- Undocumented change: Firmware version 174 can control the internal rain/soil sensor sn1/sn2 (without real sensors, for example via MQTT). But not “Flow” or “Program Switch”
 
 ## 0.0.4 (OpenSprinkler 2.3.3(173))
 
