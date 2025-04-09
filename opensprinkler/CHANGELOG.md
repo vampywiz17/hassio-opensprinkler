@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.6 (OpenSprinkler 2.3.3(175))
+
+- Change base firmware version to 2.3.3(175):
+   - Added monitor and control feature "time"
+
 ## 0.0.5 (OpenSprinkler 2.3.3(174))
 
 - Change base firmware version to 2.3.3(174):
