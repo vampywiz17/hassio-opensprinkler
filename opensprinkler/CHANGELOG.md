@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.0.7 (OpenSprinkler 2.3.3(182))
+
+- Change base firmware version to 2.3.3(182):
+   - ARP Proxy Fix
+   - Improved water meter calculation for overlapping irrigation
+   - Tennis Court: New program start and stop commands
+   - Download the new (modified) firmware 2.3.3(182)
+   - Support for FYTA sensors
+   - Support for RS485 Modbus stations (See also here)
+   - Monitoring and Control: New option “Reset in (s)” for a time-controlled reset of the monitor status
+   - Latch: Stop all irrigation circuits: If no program or zone is running and this function is called, all zones will receive the stop impulse again
+   - Virtual sensors for ETO and Radiation (requires weather service that supports this)
+   - Fix for some W5500 adapters, adapted to 40MHz
+   - Calculation of sunrise and sunset using internal formulas (instead of weather service)
+   - Latest master branch of OpenSprinkler-Firmware installed (11.07.2025)
+   - ARP table with 40
+   - W5500 with 80MHz, ENC28J60 with 20MHz for faster network transmission
+ 
 ## 0.0.6 (OpenSprinkler 2.3.3(175))
 
 - Change base firmware version to 2.3.3(175):
