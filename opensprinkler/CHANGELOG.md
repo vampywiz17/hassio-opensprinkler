@@ -7,8 +7,8 @@
    - Improved water meter calculation for overlapping irrigation
    - Tennis Court: New program start and stop commands
    - Download the new (modified) firmware 2.3.3(182)
-   - Support for FYTA sensors
-   - Support for RS485 Modbus stations (See also here)
+   - Support for [FYTA sensors](https://opensprinklershop.de/en/2025/08/25/fyta-sensoren/?v=15fc885b9ab6)
+   - Support for RS485 Modbus stations ([See also here](https://opensprinklershop.de/en/zonen-mit-rs485-modbus-steuern/?v=15fc885b9ab6))
    - Monitoring and Control: New option “Reset in (s)” for a time-controlled reset of the monitor status
    - Latch: Stop all irrigation circuits: If no program or zone is running and this function is called, all zones will receive the stop impulse again
    - Virtual sensors for ETO and Radiation (requires weather service that supports this)
