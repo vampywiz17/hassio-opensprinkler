@@ -4,12 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       source_tag:
-        description: "Upstream tag to build; leave empty for the newest tag"
+        description: "Upstream tag, például v240_219. Üresen a legújabb tag épül."
         required: false
         type: string
 
   schedule:
     - cron: "17 3 * * *"
+
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - ".github/workflows/build-opensprinkler-ospi.yml"
 
 permissions:
   contents: read
@@ -37,35 +44,56 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [[ -n "${REQUESTED_TAG}" ]]; then
-            SOURCE_TAG="${REQUESTED_TAG}"
+          ALL_TAGS="$(
+            git ls-remote --tags --refs "${SOURCE_REPOSITORY}" |
+              awk '{
+                sub("refs/tags/", "", $2)
+                print $2
+              }' |
+              grep -E '^v[0-9]+_[0-9]+$' || true
+          )"
 
-            if ! git ls-remote \
-              --exit-code \
-              --tags \
-              "${SOURCE_REPOSITORY}" \
-              "refs/tags/${SOURCE_TAG}" >/dev/null; then
-              echo "::error::Upstream tag does not exist: ${SOURCE_TAG}"
+          if [[ -z "${ALL_TAGS}" ]]; then
+            echo "::error::No matching upstream tags were found."
+            exit 1
+          fi
+
+          if [[ -n "${REQUESTED_TAG}" ]]; then
+            if [[ ! "${REQUESTED_TAG}" =~ ^v[0-9]+_[0-9]+$ ]]; then
+              echo "::error::Invalid tag format: ${REQUESTED_TAG}"
+              echo "::error::Expected format: v240_219"
               exit 1
             fi
+
+            if ! printf '%s\n' "${ALL_TAGS}" |
+              grep -Fxq "${REQUESTED_TAG}"; then
+              echo "::error::Upstream tag does not exist: ${REQUESTED_TAG}"
+              exit 1
+            fi
+
+            SOURCE_TAG="${REQUESTED_TAG}"
           else
             SOURCE_TAG="$(
-              git ls-remote --tags --refs "${SOURCE_REPOSITORY}" |
-                awk '{sub("refs/tags/", "", $2); print $2}' |
-                grep -E '^v?[0-9]+([.][0-9]+)+([._-][0-9A-Za-z.-]+)?$' |
-                sort -V |
-                tail -n 1
+              printf '%s\n' "${ALL_TAGS}" |
+                awk -F_ '
+                  {
+                    major = $1
+                    sub(/^v/, "", major)
+
+                    printf "%012d %012d %s\n",
+                      major + 0,
+                      $2 + 0,
+                      $0
+                  }
+                ' |
+                sort -k1,1n -k2,2n |
+                tail -n 1 |
+                awk '{print $3}'
             )"
           fi
 
           if [[ -z "${SOURCE_TAG}" ]]; then
-            echo "::error::No suitable upstream tag was found"
-            exit 1
-          fi
-
-          # Docker/OCI tag validáció. Nem módosítjuk az upstream tag nevét.
-          if [[ ! "${SOURCE_TAG}" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
-            echo "::error::Upstream tag is not a valid OCI image tag: ${SOURCE_TAG}"
+            echo "::error::Unable to determine the upstream tag."
             exit 1
           fi
 
@@ -88,7 +116,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Check whether image already exists
+      - name: Check whether image tag already exists
         id: image
         shell: bash
         env:
@@ -99,11 +127,13 @@ jobs:
 
           if docker buildx imagetools inspect \
             "${IMAGE}:${SOURCE_TAG}" >/dev/null 2>&1; then
+
             echo "exists=true" >> "${GITHUB_OUTPUT}"
             echo "Image already exists: ${IMAGE}:${SOURCE_TAG}"
+            echo "Build will be skipped."
           else
             echo "exists=false" >> "${GITHUB_OUTPUT}"
-            echo "Image does not exist yet: ${IMAGE}:${SOURCE_TAG}"
+            echo "Image does not exist: ${IMAGE}:${SOURCE_TAG}"
           fi
 
       - name: Clone tagged OpenSprinkler source
@@ -124,42 +154,26 @@ jobs:
           SOURCE_COMMIT="$(git -C source rev-parse HEAD)"
 
           echo "SOURCE_COMMIT=${SOURCE_COMMIT}" >> "${GITHUB_ENV}"
-          echo "Checked out ${SOURCE_TAG} at ${SOURCE_COMMIT}"
+          echo "Checked out ${SOURCE_TAG}: ${SOURCE_COMMIT}"
 
-      - name: Initialize upstream submodules
+      - name: Initialize required upstream submodules
         if: steps.image.outputs.exists != 'true'
         shell: bash
         run: |
           set -euo pipefail
 
           cd source
+
           git submodule sync --recursive
 
-          initialize_submodule() {
-            local path="$1"
-
-            if git config \
-              --file .gitmodules \
-              --get-regexp '^submodule\..*\.path$' |
-              awk '{print $2}' |
-              grep -Fxq "${path}"; then
-
-              echo "Initializing ${path}"
-
-              git submodule update \
-                --init \
-                --recursive \
-                --force \
-                "${path}"
-            else
-              echo "Submodule is not present in this tag: ${path}"
-            fi
-          }
-
-          initialize_submodule \
+          git submodule update \
+            --init \
+            --force \
             external/OpenThings-Framework-Firmware-Library
 
-          initialize_submodule \
+          git submodule update \
+            --init \
+            --force \
             external/TinyWebsockets
 
       - name: Initialize influxdb-cpp
@@ -175,10 +189,10 @@ jobs:
             --force \
             external/influxdb-cpp; then
 
-            echo "Using influxdb-cpp commit recorded by upstream tag"
+            echo "Using the influxdb-cpp commit recorded by the upstream tag."
           else
-            echo "::warning::The influxdb-cpp commit recorded by upstream is unavailable"
-            echo "::warning::Falling back to the current influxdb-cpp default branch"
+            echo "::warning::The influxdb-cpp commit recorded by the upstream tag is unavailable."
+            echo "::warning::Using the current influxdb-cpp default branch as fallback."
 
             git submodule deinit \
               --force \
@@ -202,11 +216,17 @@ jobs:
           set -euo pipefail
 
           test -f source/build2.sh
-          test -f source/external/influxdb-cpp/influxdb.hpp
-          test -d source/external/TinyWebsockets/tiny_websockets_lib/src
-          test -f source/external/OpenThings-Framework-Firmware-Library/LinuxLocalServer.cpp
 
-      - name: Build and push tagged image
+          test -f \
+            source/external/influxdb-cpp/influxdb.hpp
+
+          test -f \
+            source/external/OpenThings-Framework-Firmware-Library/LinuxLocalServer.cpp
+
+          test -d \
+            source/external/TinyWebsockets/tiny_websockets_lib/src
+
+      - name: Build and push tagged AMD64 image
         if: steps.image.outputs.exists != 'true'
         shell: bash
         env:
@@ -264,8 +284,9 @@ jobs:
                 libi2c0 \
                 libmodbus5 \
                 libbluetooth3 \
-           && rm -rf /var/lib/apt/lists/* \
-           && mkdir -p /OpenSprinkler /data/logs
+           && rm -rf /var/lib/apt/lists/*
+
+          RUN mkdir -p /OpenSprinkler /data/logs
 
           COPY --from=os-build \
             /OpenSprinkler/OpenSprinkler \
@@ -274,12 +295,14 @@ jobs:
           WORKDIR /OpenSprinkler
 
           VOLUME ["/data"]
+
           EXPOSE 8080
 
           CMD ["/OpenSprinkler/OpenSprinkler", "-d", "/data"]
           DOCKERFILE
 
-      - name: Summary
+      - name: Workflow summary
+        if: always()
         shell: bash
         env:
           IMAGE: ${{ steps.source.outputs.image }}
@@ -291,6 +314,7 @@ jobs:
           {
             echo "## OpenSprinkler OSPi AMD64"
             echo
+            echo "- Upstream repository: \`${SOURCE_REPOSITORY}\`"
             echo "- Upstream tag: \`${SOURCE_TAG}\`"
             echo "- Image: \`${IMAGE}:${SOURCE_TAG}\`"
 
