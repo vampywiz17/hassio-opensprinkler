@@ -285,6 +285,7 @@ jobs:
             --label "org.opencontainers.image.revision=${SOURCE_COMMIT}" \
             --label "org.opencontainers.image.title=OpenSprinkler OSPi Multi-Arch" \
             --tag "${IMAGE}:${SOURCE_TAG}" \
+            --tag "${IMAGE}:0.0.8" \
             --cache-from "type=gha" \
             --cache-to "type=gha,mode=max" \
             --push \
