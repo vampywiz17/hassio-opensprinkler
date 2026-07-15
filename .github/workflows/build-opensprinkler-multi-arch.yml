@@ -8,9 +8,6 @@ on:
         required: false
         type: string
 
-  schedule:
-    - cron: "17 3 * * *"
-
   push:
     branches:
       - main
