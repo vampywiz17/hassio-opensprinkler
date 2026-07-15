@@ -1,4 +1,3 @@
-```yaml
 name: Build OpenSprinkler OSPi AMD64
 
 on:
@@ -201,4 +200,3 @@ jobs:
           echo "Published:"
           echo "${IMAGE}:latest"
           echo "${IMAGE}:${SOURCE_COMMIT_SHORT}"
-```
