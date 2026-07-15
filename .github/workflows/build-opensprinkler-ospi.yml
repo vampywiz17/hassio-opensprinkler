@@ -1,0 +1,204 @@
+```yaml
+name: Build OpenSprinkler OSPi AMD64
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "17 3 * * *"
+
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - ".github/workflows/build-opensprinkler-ospi.yml"
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: opensprinkler-ospi-amd64
+  cancel-in-progress: true
+
+env:
+  SOURCE_REPOSITORY: https://github.com/opensprinklershop/OpenSprinkler-Firmware.git
+  SOURCE_BRANCH: master
+  IMAGE_NAME: opensprinkler-ospi
+
+jobs:
+  build:
+    name: Build and publish AMD64 image
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout CI repository
+        uses: actions/checkout@v4
+
+      - name: Clone OpenSprinkler source
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git clone \
+            --branch "${SOURCE_BRANCH}" \
+            --single-branch \
+            --depth 1 \
+            "${SOURCE_REPOSITORY}" \
+            source
+
+          SOURCE_COMMIT="$(git -C source rev-parse HEAD)"
+          SOURCE_COMMIT_SHORT="$(git -C source rev-parse --short=12 HEAD)"
+
+          echo "SOURCE_COMMIT=${SOURCE_COMMIT}" >> "${GITHUB_ENV}"
+          echo "SOURCE_COMMIT_SHORT=${SOURCE_COMMIT_SHORT}" >> "${GITHUB_ENV}"
+
+      - name: Initialize available submodules
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd source
+
+          git submodule sync --recursive
+
+          # Ezeket külön inicializáljuk, hogy az esetleg hibás
+          # influxdb-cpp pointer ne állítsa meg a teljes folyamatot.
+          git submodule update \
+            --init \
+            --force \
+            external/OpenThings-Framework-Firmware-Library
+
+          git submodule update \
+            --init \
+            --force \
+            external/TinyWebsockets
+
+      - name: Supply influxdb-cpp dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd source
+
+          # Az upstream fő repository által hivatkozott influxdb-cpp
+          # commit időnként már nem érhető el. A forrásfájlokat nem
+          # módosítjuk, csak a build workspace-ben biztosítjuk a libraryt.
+          rm -rf external/influxdb-cpp
+          rm -rf .git/modules/external/influxdb-cpp
+
+          git clone \
+            --depth 1 \
+            https://github.com/orca-zhang/influxdb-cpp.git \
+            external/influxdb-cpp
+
+          test -f external/influxdb-cpp/influxdb.hpp
+
+      - name: Verify build inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f source/build2.sh
+          test -f source/external/influxdb-cpp/influxdb.hpp
+          test -f source/external/OpenThings-Framework-Firmware-Library/LinuxLocalServer.cpp
+          test -d source/external/TinyWebsockets/tiny_websockets_lib/src
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push AMD64 OSPi image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          IMAGE="ghcr.io/${OWNER}/${IMAGE_NAME}"
+
+          docker buildx build \
+            --platform linux/amd64 \
+            --provenance=true \
+            --sbom=true \
+            --label "org.opencontainers.image.source=${SOURCE_REPOSITORY}" \
+            --label "org.opencontainers.image.revision=${SOURCE_COMMIT}" \
+            --label "org.opencontainers.image.title=OpenSprinkler OSPi AMD64" \
+            --tag "${IMAGE}:latest" \
+            --tag "${IMAGE}:${SOURCE_COMMIT_SHORT}" \
+            --cache-from "type=gha" \
+            --cache-to "type=gha,mode=max" \
+            --push \
+            --file - \
+            ./source <<'DOCKERFILE'
+          FROM debian:bookworm-slim AS build
+
+          ENV DEBIAN_FRONTEND=noninteractive
+
+          RUN apt-get update \
+           && apt-get install -y --no-install-recommends \
+                bash \
+                g++ \
+                git \
+                make \
+                libmosquittopp-dev \
+                libssl-dev \
+                libi2c-dev \
+                libmodbus-dev \
+                libbluetooth-dev \
+                libcurl4-openssl-dev \
+           && rm -rf /var/lib/apt/lists/*
+
+          COPY . /OpenSprinkler
+          WORKDIR /OpenSprinkler
+
+          # OSPi build AMD64-re, valódi GPIO-hozzáférés nélkül.
+          RUN GPIO_SIMULATION=1 bash ./build2.sh
+
+          FROM debian:bookworm-slim AS runtime
+
+          ENV DEBIAN_FRONTEND=noninteractive
+
+          RUN apt-get update \
+           && apt-get install -y --no-install-recommends \
+                ca-certificates \
+                libstdc++6 \
+                libmosquittopp1 \
+                libssl3 \
+                libcurl4 \
+                libi2c0 \
+                libmodbus5 \
+                libbluetooth3 \
+           && rm -rf /var/lib/apt/lists/* \
+           && mkdir -p /OpenSprinkler /data/logs
+
+          COPY --from=build \
+            /OpenSprinkler/OpenSprinkler \
+            /OpenSprinkler/OpenSprinkler
+
+          WORKDIR /OpenSprinkler
+
+          VOLUME ["/data"]
+          EXPOSE 8080
+
+          CMD ["/OpenSprinkler/OpenSprinkler", "-d", "/data"]
+          DOCKERFILE
+
+      - name: Show published images
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          IMAGE="ghcr.io/${OWNER}/${IMAGE_NAME}"
+
+          echo "Published:"
+          echo "${IMAGE}:latest"
+          echo "${IMAGE}:${SOURCE_COMMIT_SHORT}"
+```
