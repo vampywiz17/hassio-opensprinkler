@@ -8,6 +8,12 @@ on:
         required: false
         type: string
 
+      addon_version:
+        description: "Home Assistant add-on verzió, például 0.0.8"
+        required: true
+        default: "0.0.8"
+        type: string
+
   push:
     branches:
       - main
@@ -29,15 +35,16 @@ env:
 
 jobs:
   build:
-    name: Build latest upstream tag
+    name: Build or tag OpenSprinkler image
     runs-on: ubuntu-24.04
 
     steps:
-      - name: Determine upstream tag
+      - name: Determine upstream and add-on versions
         id: source
         shell: bash
         env:
           REQUESTED_TAG: ${{ inputs.source_tag }}
+          REQUESTED_ADDON_VERSION: ${{ inputs.addon_version }}
         run: |
           set -euo pipefail
 
@@ -57,7 +64,7 @@ jobs:
 
           if [[ -n "${REQUESTED_TAG}" ]]; then
             if [[ ! "${REQUESTED_TAG}" =~ ^v[0-9]+_[0-9]+$ ]]; then
-              echo "::error::Invalid tag format: ${REQUESTED_TAG}"
+              echo "::error::Invalid upstream tag format: ${REQUESTED_TAG}"
               echo "::error::Expected format: v240_219"
               exit 1
             fi
@@ -94,14 +101,25 @@ jobs:
             exit 1
           fi
 
+          ADDON_VERSION="${REQUESTED_ADDON_VERSION}"
+
+          if [[ ! "${ADDON_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid add-on version: ${ADDON_VERSION}"
+            echo "::error::Expected format: 0.0.8"
+            exit 1
+          fi
+
           OWNER="${GITHUB_REPOSITORY_OWNER,,}"
           IMAGE="ghcr.io/${OWNER}/${IMAGE_NAME}"
 
           echo "tag=${SOURCE_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "addon_version=${ADDON_VERSION}" >> "${GITHUB_OUTPUT}"
           echo "image=${IMAGE}" >> "${GITHUB_OUTPUT}"
 
           echo "Selected upstream tag: ${SOURCE_TAG}"
-          echo "Target image: ${IMAGE}:${SOURCE_TAG}"
+          echo "Selected add-on version: ${ADDON_VERSION}"
+          echo "Firmware image: ${IMAGE}:${SOURCE_TAG}"
+          echo "Add-on image: ${IMAGE}:${ADDON_VERSION}"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -118,66 +136,80 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Check whether multi-arch image already exists
+      - name: Check existing image tags
         id: image
         shell: bash
         env:
           IMAGE: ${{ steps.source.outputs.image }}
           SOURCE_TAG: ${{ steps.source.outputs.tag }}
+          ADDON_VERSION: ${{ steps.source.outputs.addon_version }}
         run: |
           set -euo pipefail
 
-          TARGET="${IMAGE}:${SOURCE_TAG}"
+          SOURCE_IMAGE="${IMAGE}:${SOURCE_TAG}"
+          ADDON_IMAGE="${IMAGE}:${ADDON_VERSION}"
 
-          if ! docker buildx imagetools inspect \
-            "${TARGET}" >/dev/null 2>&1; then
+          has_platforms() {
+            local target="$1"
 
-            echo "exists=false" >> "${GITHUB_OUTPUT}"
-            echo "Image does not exist: ${TARGET}"
-            exit 0
+            if ! docker buildx imagetools inspect \
+              "${target}" >/dev/null 2>&1; then
+              return 1
+            fi
+
+            local manifest
+            manifest="$(
+              docker buildx imagetools inspect \
+                --raw \
+                "${target}"
+            )"
+
+            local has_amd64
+            local has_arm64
+
+            has_amd64="$(
+              printf '%s' "${manifest}" |
+                jq -r '
+                  (.manifests // []) |
+                  any(
+                    .platform.os == "linux" and
+                    .platform.architecture == "amd64"
+                  )
+                '
+            )"
+
+            has_arm64="$(
+              printf '%s' "${manifest}" |
+                jq -r '
+                  (.manifests // []) |
+                  any(
+                    .platform.os == "linux" and
+                    .platform.architecture == "arm64"
+                  )
+                '
+            )"
+
+            [[ "${has_amd64}" == "true" && "${has_arm64}" == "true" ]]
+          }
+
+          if has_platforms "${SOURCE_IMAGE}"; then
+            echo "source_exists=true" >> "${GITHUB_OUTPUT}"
+            echo "Complete firmware image exists: ${SOURCE_IMAGE}"
+          else
+            echo "source_exists=false" >> "${GITHUB_OUTPUT}"
+            echo "Firmware image is missing or incomplete: ${SOURCE_IMAGE}"
           fi
 
-          RAW_MANIFEST="$(
-            docker buildx imagetools inspect \
-              --raw \
-              "${TARGET}"
-          )"
-
-          HAS_AMD64="$(
-            printf '%s' "${RAW_MANIFEST}" |
-              jq -r '
-                (.manifests // []) |
-                any(
-                  .platform.os == "linux" and
-                  .platform.architecture == "amd64"
-                )
-              '
-          )"
-
-          HAS_ARM64="$(
-            printf '%s' "${RAW_MANIFEST}" |
-              jq -r '
-                (.manifests // []) |
-                any(
-                  .platform.os == "linux" and
-                  .platform.architecture == "arm64"
-                )
-              '
-          )"
-
-          if [[ "${HAS_AMD64}" == "true" && "${HAS_ARM64}" == "true" ]]; then
-            echo "exists=true" >> "${GITHUB_OUTPUT}"
-            echo "Multi-arch image already exists: ${TARGET}"
-            echo "Platforms: linux/amd64, linux/arm64"
+          if has_platforms "${ADDON_IMAGE}"; then
+            echo "addon_exists=true" >> "${GITHUB_OUTPUT}"
+            echo "Complete add-on image exists: ${ADDON_IMAGE}"
           else
-            echo "exists=false" >> "${GITHUB_OUTPUT}"
-            echo "Image exists but is incomplete: ${TARGET}"
-            echo "linux/amd64: ${HAS_AMD64}"
-            echo "linux/arm64: ${HAS_ARM64}"
+            echo "addon_exists=false" >> "${GITHUB_OUTPUT}"
+            echo "Add-on image is missing or incomplete: ${ADDON_IMAGE}"
           fi
 
       - name: Clone tagged OpenSprinkler source
-        if: steps.image.outputs.exists != 'true'
+        if: steps.image.outputs.source_exists != 'true'
         shell: bash
         env:
           SOURCE_TAG: ${{ steps.source.outputs.tag }}
@@ -197,7 +229,7 @@ jobs:
           echo "Checked out ${SOURCE_TAG}: ${SOURCE_COMMIT}"
 
       - name: Initialize required upstream submodules
-        if: steps.image.outputs.exists != 'true'
+        if: steps.image.outputs.source_exists != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -217,7 +249,7 @@ jobs:
             external/TinyWebsockets
 
       - name: Initialize influxdb-cpp
-        if: steps.image.outputs.exists != 'true'
+        if: steps.image.outputs.source_exists != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -232,7 +264,7 @@ jobs:
             echo "Using the influxdb-cpp commit recorded by the upstream tag."
           else
             echo "::warning::The recorded influxdb-cpp commit is unavailable."
-            echo "::warning::Using its current default branch as fallback."
+            echo "::warning::Using the current default branch as fallback."
 
             git submodule deinit \
               --force \
@@ -250,7 +282,7 @@ jobs:
           test -f external/influxdb-cpp/influxdb.hpp
 
       - name: Verify build inputs
-        if: steps.image.outputs.exists != 'true'
+        if: steps.image.outputs.source_exists != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -265,11 +297,12 @@ jobs:
             source/external/TinyWebsockets/tiny_websockets_lib/src
 
       - name: Build and push multi-arch image
-        if: steps.image.outputs.exists != 'true'
+        if: steps.image.outputs.source_exists != 'true'
         shell: bash
         env:
           IMAGE: ${{ steps.source.outputs.image }}
           SOURCE_TAG: ${{ steps.source.outputs.tag }}
+          ADDON_VERSION: ${{ steps.source.outputs.addon_version }}
         run: |
           set -euo pipefail
 
@@ -282,7 +315,7 @@ jobs:
             --label "org.opencontainers.image.revision=${SOURCE_COMMIT}" \
             --label "org.opencontainers.image.title=OpenSprinkler OSPi Multi-Arch" \
             --tag "${IMAGE}:${SOURCE_TAG}" \
-            --tag "${IMAGE}:0.0.8" \
+            --tag "${IMAGE}:${ADDON_VERSION}" \
             --cache-from "type=gha" \
             --cache-to "type=gha,mode=max" \
             --push \
@@ -339,73 +372,7 @@ jobs:
           CMD ["/OpenSprinkler/OpenSprinkler", "-d", "/data"]
           DOCKERFILE
 
-      - name: Verify published platforms
-        if: steps.image.outputs.exists != 'true'
-        shell: bash
-        env:
-          IMAGE: ${{ steps.source.outputs.image }}
-          SOURCE_TAG: ${{ steps.source.outputs.tag }}
-        run: |
-          set -euo pipefail
-
-          TARGET="${IMAGE}:${SOURCE_TAG}"
-
-          docker buildx imagetools inspect "${TARGET}"
-
-          RAW_MANIFEST="$(
-            docker buildx imagetools inspect \
-              --raw \
-              "${TARGET}"
-          )"
-
-          printf '%s' "${RAW_MANIFEST}" |
-            jq -e '
-              (.manifests // []) |
-              any(
-                .platform.os == "linux" and
-                .platform.architecture == "amd64"
-              )
-            ' >/dev/null
-
-          printf '%s' "${RAW_MANIFEST}" |
-            jq -e '
-              (.manifests // []) |
-              any(
-                .platform.os == "linux" and
-                .platform.architecture == "arm64"
-              )
-            ' >/dev/null
-
-          echo "Verified platforms:"
-          echo "  linux/amd64"
-          echo "  linux/arm64"
-
-      - name: Workflow summary
-        if: always()
-        shell: bash
-        env:
-          IMAGE: ${{ steps.source.outputs.image }}
-          SOURCE_TAG: ${{ steps.source.outputs.tag }}
-          IMAGE_EXISTS: ${{ steps.image.outputs.exists }}
-        run: |
-          set -euo pipefail
-
-          {
-            echo "## OpenSprinkler OSPi multi-arch image"
-            echo
-            echo "- Upstream repository: \`${SOURCE_REPOSITORY}\`"
-            echo "- Upstream tag: \`${SOURCE_TAG}\`"
-            echo "- Image: \`${IMAGE}:${SOURCE_TAG}\`"
-            echo "- Platforms: \`linux/amd64\`, \`linux/arm64\`"
-
-            if [[ "${IMAGE_EXISTS}" == "true" ]]; then
-              echo "- Result: complete multi-arch image already existed; build skipped"
-            else
-              echo "- Result: multi-arch image built and published"
-            fi
-          } >> "${GITHUB_STEP_SUMMARY}"
-
-      - name: Create add-on version tag from existing image
+      - name: Create add-on version tag from existing firmware image
         if: >-
           steps.image.outputs.source_exists == 'true' &&
           steps.image.outputs.addon_exists != 'true'
@@ -417,9 +384,93 @@ jobs:
         run: |
           set -euo pipefail
 
-          docker buildx imagetools create \
-            --tag "${IMAGE}:${ADDON_VERSION}" \
-            "${IMAGE}:${SOURCE_TAG}"
+          SOURCE_IMAGE="${IMAGE}:${SOURCE_TAG}"
+          ADDON_IMAGE="${IMAGE}:${ADDON_VERSION}"
 
-          echo "Created:"
-          echo "${IMAGE}:${ADDON_VERSION}"
+          docker buildx imagetools create \
+            --tag "${ADDON_IMAGE}" \
+            "${SOURCE_IMAGE}"
+
+          echo "Created add-on version tag:"
+          echo "${ADDON_IMAGE}"
+
+      - name: Verify published image tags
+        if: >-
+          steps.image.outputs.source_exists != 'true' ||
+          steps.image.outputs.addon_exists != 'true'
+        shell: bash
+        env:
+          IMAGE: ${{ steps.source.outputs.image }}
+          SOURCE_TAG: ${{ steps.source.outputs.tag }}
+          ADDON_VERSION: ${{ steps.source.outputs.addon_version }}
+        run: |
+          set -euo pipefail
+
+          verify_platforms() {
+            local target="$1"
+
+            echo "Inspecting ${target}"
+
+            local manifest
+            manifest="$(
+              docker buildx imagetools inspect \
+                --raw \
+                "${target}"
+            )"
+
+            printf '%s' "${manifest}" |
+              jq -e '
+                (.manifests // []) |
+                any(
+                  .platform.os == "linux" and
+                  .platform.architecture == "amd64"
+                )
+              ' >/dev/null
+
+            printf '%s' "${manifest}" |
+              jq -e '
+                (.manifests // []) |
+                any(
+                  .platform.os == "linux" and
+                  .platform.architecture == "arm64"
+                )
+              ' >/dev/null
+          }
+
+          verify_platforms "${IMAGE}:${SOURCE_TAG}"
+          verify_platforms "${IMAGE}:${ADDON_VERSION}"
+
+          echo "Both tags contain:"
+          echo "  linux/amd64"
+          echo "  linux/arm64"
+
+      - name: Workflow summary
+        if: always()
+        shell: bash
+        env:
+          IMAGE: ${{ steps.source.outputs.image }}
+          SOURCE_TAG: ${{ steps.source.outputs.tag }}
+          ADDON_VERSION: ${{ steps.source.outputs.addon_version }}
+          SOURCE_EXISTS: ${{ steps.image.outputs.source_exists }}
+          ADDON_EXISTS: ${{ steps.image.outputs.addon_exists }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo "## OpenSprinkler OSPi multi-arch image"
+            echo
+            echo "- Upstream repository: \`${SOURCE_REPOSITORY}\`"
+            echo "- Upstream tag: \`${SOURCE_TAG}\`"
+            echo "- Firmware image: \`${IMAGE}:${SOURCE_TAG}\`"
+            echo "- Add-on image: \`${IMAGE}:${ADDON_VERSION}\`"
+            echo "- Platforms: \`linux/amd64\`, \`linux/arm64\`"
+            echo
+
+            if [[ "${SOURCE_EXISTS}" != "true" ]]; then
+              echo "- Result: firmware built and both tags published"
+            elif [[ "${ADDON_EXISTS}" != "true" ]]; then
+              echo "- Result: existing firmware image tagged as ${ADDON_VERSION}"
+            else
+              echo "- Result: both complete image tags already existed; nothing changed"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
