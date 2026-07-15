@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.0.8 (OpenSprinkler 2.4.0(219))
+
+- Change base firmware version to OpenSprinklerShop release v240_219
+- Build the add-on image directly from the corresponding upstream firmware release tag
+- Replace the previous Docker Hub image with `ghcr.io/vampywiz17/opensprinkler-ospi`
+- Add multi-architecture support for AMD64 and AArch64
+- Remove ARMv7 support
+- Preserve existing Home Assistant add-on data through the unchanged `/data` directory and add-on slug
+- Automatically build and publish new release-tagged images when a new upstream firmware version becomes available
+
 ## 0.0.7 (OpenSprinkler 2.3.3(182))
 
 - Change base firmware version to 2.3.3(182):
