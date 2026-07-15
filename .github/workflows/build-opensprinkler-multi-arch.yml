@@ -136,6 +136,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Install crane
+        uses: imjasonh/setup-crane@v0.4
+
+      - name: Verify crane installation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          command -v crane
+          crane version
+
       - name: Check existing image tags
         id: image
         shell: bash
@@ -394,8 +405,16 @@ jobs:
             "${SOURCE_IMAGE}" \
             "${ADDON_VERSION}"
 
-          crane digest "${SOURCE_IMAGE}"
-          crane digest "${ADDON_IMAGE}"
+          SOURCE_DIGEST="$(crane digest "${SOURCE_IMAGE}")"
+          ADDON_DIGEST="$(crane digest "${ADDON_IMAGE}")"
+
+          echo "Source digest: ${SOURCE_DIGEST}"
+          echo "Add-on digest: ${ADDON_DIGEST}"
+
+          if [[ "${SOURCE_DIGEST}" != "${ADDON_DIGEST}" ]]; then
+            echo "::error::The new tag does not reference the source manifest."
+            exit 1
+          fi
 
           echo "Created add-on version tag:"
           echo "${ADDON_IMAGE}"
