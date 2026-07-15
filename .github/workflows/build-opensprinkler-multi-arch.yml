@@ -387,55 +387,15 @@ jobs:
           SOURCE_IMAGE="${IMAGE}:${SOURCE_TAG}"
           ADDON_IMAGE="${IMAGE}:${ADDON_VERSION}"
 
-          RAW_MANIFEST="$(
-            docker buildx imagetools inspect \
-              --raw \
-              "${SOURCE_IMAGE}"
-          )"
+          echo "Source image: ${SOURCE_IMAGE}"
+          echo "New add-on tag: ${ADDON_IMAGE}"
 
-          AMD64_DIGEST="$(
-            printf '%s' "${RAW_MANIFEST}" |
-              jq -r '
-                .manifests[]
-                | select(
-                    .platform.os == "linux" and
-                    .platform.architecture == "amd64"
-                  )
-                | .digest
-              ' |
-              head -n 1
-          )"
+          crane tag \
+            "${SOURCE_IMAGE}" \
+            "${ADDON_VERSION}"
 
-          ARM64_DIGEST="$(
-            printf '%s' "${RAW_MANIFEST}" |
-              jq -r '
-                .manifests[]
-                | select(
-                    .platform.os == "linux" and
-                    .platform.architecture == "arm64"
-                  )
-                | .digest
-              ' |
-              head -n 1
-          )"
-
-          if [[ -z "${AMD64_DIGEST}" || "${AMD64_DIGEST}" == "null" ]]; then
-            echo "::error::Could not find linux/amd64 manifest in ${SOURCE_IMAGE}"
-            exit 1
-          fi
-
-          if [[ -z "${ARM64_DIGEST}" || "${ARM64_DIGEST}" == "null" ]]; then
-            echo "::error::Could not find linux/arm64 manifest in ${SOURCE_IMAGE}"
-            exit 1
-          fi
-
-          echo "AMD64 manifest: ${AMD64_DIGEST}"
-          echo "ARM64 manifest: ${ARM64_DIGEST}"
-
-          docker buildx imagetools create \
-            --tag "${ADDON_IMAGE}" \
-            "${IMAGE}@${AMD64_DIGEST}" \
-            "${IMAGE}@${ARM64_DIGEST}"
+          crane digest "${SOURCE_IMAGE}"
+          crane digest "${ADDON_IMAGE}"
 
           echo "Created add-on version tag:"
           echo "${ADDON_IMAGE}"
