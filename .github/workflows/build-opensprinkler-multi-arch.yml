@@ -404,3 +404,22 @@ jobs:
               echo "- Result: multi-arch image built and published"
             fi
           } >> "${GITHUB_STEP_SUMMARY}"
+
+      - name: Create add-on version tag from existing image
+        if: >-
+          steps.image.outputs.source_exists == 'true' &&
+          steps.image.outputs.addon_exists != 'true'
+        shell: bash
+        env:
+          IMAGE: ${{ steps.source.outputs.image }}
+          SOURCE_TAG: ${{ steps.source.outputs.tag }}
+          ADDON_VERSION: ${{ steps.source.outputs.addon_version }}
+        run: |
+          set -euo pipefail
+
+          docker buildx imagetools create \
+            --tag "${IMAGE}:${ADDON_VERSION}" \
+            "${IMAGE}:${SOURCE_TAG}"
+
+          echo "Created:"
+          echo "${IMAGE}:${ADDON_VERSION}"
