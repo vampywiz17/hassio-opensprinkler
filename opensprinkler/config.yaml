@@ -1,20 +1,28 @@
-
 name: OpenSprinkler
-description: Home Assistant add-on for OpenSprinkler using vampywiz17/opensprinkler image.
+description: Home Assistant add-on for OpenSprinkler OSPi.
 url: https://github.com/vampywiz17/hassio-opensprinkler
-image: vampywiz17/opensprinkler
-arch: [ amd64, armv7 ]
+
+image: ghcr.io/vampywiz17/opensprinkler-ospi
+version: "v240_219"
+
+slug: opensprinkler
+
+arch:
+  - amd64
+  - aarch64
+
 ingress: true
 ingress_port: 8080
 panel_icon: "mdi:sprinkler-variant"
 
-version: 0.0.7
-slug: opensprinkler
 startup: services
 boot: auto
+
 ports:
   8080/tcp: 5557
+
 ports_description:
   8080/tcp: Web interface
+
 options: {}
 schema: {}
