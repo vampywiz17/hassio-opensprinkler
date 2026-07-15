@@ -308,8 +308,8 @@ jobs:
 
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
-            --provenance=true \
-            --sbom=true \
+            --provenance=false \
+            --sbom=false \
             --label "org.opencontainers.image.source=${SOURCE_REPOSITORY}" \
             --label "org.opencontainers.image.version=${SOURCE_TAG}" \
             --label "org.opencontainers.image.revision=${SOURCE_COMMIT}" \
@@ -387,9 +387,55 @@ jobs:
           SOURCE_IMAGE="${IMAGE}:${SOURCE_TAG}"
           ADDON_IMAGE="${IMAGE}:${ADDON_VERSION}"
 
+          RAW_MANIFEST="$(
+            docker buildx imagetools inspect \
+              --raw \
+              "${SOURCE_IMAGE}"
+          )"
+
+          AMD64_DIGEST="$(
+            printf '%s' "${RAW_MANIFEST}" |
+              jq -r '
+                .manifests[]
+                | select(
+                    .platform.os == "linux" and
+                    .platform.architecture == "amd64"
+                  )
+                | .digest
+              ' |
+              head -n 1
+          )"
+
+          ARM64_DIGEST="$(
+            printf '%s' "${RAW_MANIFEST}" |
+              jq -r '
+                .manifests[]
+                | select(
+                    .platform.os == "linux" and
+                    .platform.architecture == "arm64"
+                  )
+                | .digest
+              ' |
+              head -n 1
+          )"
+
+          if [[ -z "${AMD64_DIGEST}" || "${AMD64_DIGEST}" == "null" ]]; then
+            echo "::error::Could not find linux/amd64 manifest in ${SOURCE_IMAGE}"
+            exit 1
+          fi
+
+          if [[ -z "${ARM64_DIGEST}" || "${ARM64_DIGEST}" == "null" ]]; then
+            echo "::error::Could not find linux/arm64 manifest in ${SOURCE_IMAGE}"
+            exit 1
+          fi
+
+          echo "AMD64 manifest: ${AMD64_DIGEST}"
+          echo "ARM64 manifest: ${ARM64_DIGEST}"
+
           docker buildx imagetools create \
             --tag "${ADDON_IMAGE}" \
-            "${SOURCE_IMAGE}"
+            "${IMAGE}@${AMD64_DIGEST}" \
+            "${IMAGE}@${ARM64_DIGEST}"
 
           echo "Created add-on version tag:"
           echo "${ADDON_IMAGE}"
@@ -440,7 +486,7 @@ jobs:
           verify_platforms "${IMAGE}:${SOURCE_TAG}"
           verify_platforms "${IMAGE}:${ADDON_VERSION}"
 
-          echo "Both tags contain:"
+          echo "Both image tags contain:"
           echo "  linux/amd64"
           echo "  linux/arm64"
 
