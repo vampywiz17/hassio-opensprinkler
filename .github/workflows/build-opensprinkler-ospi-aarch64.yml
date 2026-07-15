@@ -1,0 +1,475 @@
+name: Build OpenSprinkler OSPi AArch64
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_tag:
+        description: "Upstream tag, például v240_219. Üresen a legújabb tag épül."
+        required: false
+        type: string
+
+  # Automatikusan elindul a meglévő AMD64 workflow sikeres futása után.
+  workflow_run:
+    workflows:
+      - "Build OpenSprinkler OSPi AMD64"
+    types:
+      - completed
+
+  # Biztonsági tartalék: az AMD64 workflow után 30 perccel.
+  schedule:
+    - cron: "47 3 * * *"
+
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - ".github/workflows/build-opensprinkler-ospi-aarch64.yml"
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: opensprinkler-ospi-aarch64
+  cancel-in-progress: false
+
+env:
+  SOURCE_REPOSITORY: https://github.com/opensprinklershop/OpenSprinkler-Firmware.git
+  IMAGE_NAME: opensprinkler-ospi
+
+jobs:
+  build:
+    name: Build AArch64 and publish multi-arch image
+
+    # workflow_run esetén csak sikeres AMD64 build után induljon.
+    if: >-
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
+
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Determine upstream tag
+        id: source
+        shell: bash
+        env:
+          REQUESTED_TAG: ${{ inputs.source_tag }}
+        run: |
+          set -euo pipefail
+
+          ALL_TAGS="$(
+            git ls-remote --tags --refs "${SOURCE_REPOSITORY}" |
+              awk '{
+                sub("refs/tags/", "", $2)
+                print $2
+              }' |
+              grep -E '^v[0-9]+_[0-9]+$' || true
+          )"
+
+          if [[ -z "${ALL_TAGS}" ]]; then
+            echo "::error::No matching upstream tags were found."
+            exit 1
+          fi
+
+          if [[ -n "${REQUESTED_TAG}" ]]; then
+            if [[ ! "${REQUESTED_TAG}" =~ ^v[0-9]+_[0-9]+$ ]]; then
+              echo "::error::Invalid tag format: ${REQUESTED_TAG}"
+              echo "::error::Expected format: v240_219"
+              exit 1
+            fi
+
+            if ! printf '%s\n' "${ALL_TAGS}" |
+              grep -Fxq "${REQUESTED_TAG}"; then
+              echo "::error::Upstream tag does not exist: ${REQUESTED_TAG}"
+              exit 1
+            fi
+
+            SOURCE_TAG="${REQUESTED_TAG}"
+          else
+            SOURCE_TAG="$(
+              printf '%s\n' "${ALL_TAGS}" |
+                awk -F_ '
+                  {
+                    major = $1
+                    sub(/^v/, "", major)
+
+                    printf "%012d %012d %s\n",
+                      major + 0,
+                      $2 + 0,
+                      $0
+                  }
+                ' |
+                sort -k1,1n -k2,2n |
+                tail -n 1 |
+                awk '{print $3}'
+            )"
+          fi
+
+          if [[ -z "${SOURCE_TAG}" ]]; then
+            echo "::error::Unable to determine the upstream tag."
+            exit 1
+          fi
+
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          IMAGE="ghcr.io/${OWNER}/${IMAGE_NAME}"
+
+          echo "tag=${SOURCE_TAG}" >> "${GITHUB_OUTPUT}"
+          echo "image=${IMAGE}" >> "${GITHUB_OUTPUT}"
+
+          echo "Selected upstream tag: ${SOURCE_TAG}"
+          echo "Final multi-arch image: ${IMAGE}:${SOURCE_TAG}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check AMD64 image and existing platforms
+        id: image
+        shell: bash
+        env:
+          IMAGE: ${{ steps.source.outputs.image }}
+          SOURCE_TAG: ${{ steps.source.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          FINAL_IMAGE="${IMAGE}:${SOURCE_TAG}"
+          ARM64_IMAGE="${IMAGE}:${SOURCE_TAG}-aarch64"
+
+          if ! docker buildx imagetools inspect \
+            "${FINAL_IMAGE}" >/dev/null 2>&1; then
+            echo "::error::AMD64 image does not exist yet: ${FINAL_IMAGE}"
+            echo "::error::Run the AMD64 workflow first."
+            exit 1
+          fi
+
+          RAW_MANIFEST="$(
+            docker buildx imagetools inspect \
+              --raw \
+              "${FINAL_IMAGE}"
+          )"
+
+          if printf '%s' "${RAW_MANIFEST}" |
+            jq -e '
+              (
+                .manifests // []
+              ) |
+              any(
+                .platform.architecture == "arm64" and
+                .platform.os == "linux"
+              )
+            ' >/dev/null; then
+
+            echo "arm64_exists=true" >> "${GITHUB_OUTPUT}"
+            echo "AArch64 is already present in ${FINAL_IMAGE}"
+          else
+            echo "arm64_exists=false" >> "${GITHUB_OUTPUT}"
+            echo "AArch64 is not present yet in ${FINAL_IMAGE}"
+          fi
+
+          if docker buildx imagetools inspect \
+            "${ARM64_IMAGE}" >/dev/null 2>&1; then
+            echo "arm64_temp_exists=true" >> "${GITHUB_OUTPUT}"
+            echo "AArch64 image already exists: ${ARM64_IMAGE}"
+          else
+            echo "arm64_temp_exists=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Clone tagged OpenSprinkler source
+        if: >-
+          steps.image.outputs.arm64_exists != 'true' &&
+          steps.image.outputs.arm64_temp_exists != 'true'
+        shell: bash
+        env:
+          SOURCE_TAG: ${{ steps.source.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          git clone \
+            --branch "${SOURCE_TAG}" \
+            --single-branch \
+            --depth 1 \
+            "${SOURCE_REPOSITORY}" \
+            source
+
+          SOURCE_COMMIT="$(git -C source rev-parse HEAD)"
+
+          echo "SOURCE_COMMIT=${SOURCE_COMMIT}" >> "${GITHUB_ENV}"
+          echo "Checked out ${SOURCE_TAG}: ${SOURCE_COMMIT}"
+
+      - name: Initialize required upstream submodules
+        if: >-
+          steps.image.outputs.arm64_exists != 'true' &&
+          steps.image.outputs.arm64_temp_exists != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd source
+
+          git submodule sync --recursive
+
+          git submodule update \
+            --init \
+            --force \
+            external/OpenThings-Framework-Firmware-Library
+
+          git submodule update \
+            --init \
+            --force \
+            external/TinyWebsockets
+
+      - name: Initialize influxdb-cpp
+        if: >-
+          steps.image.outputs.arm64_exists != 'true' &&
+          steps.image.outputs.arm64_temp_exists != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd source
+
+          if git submodule update \
+            --init \
+            --force \
+            external/influxdb-cpp; then
+
+            echo "Using the influxdb-cpp commit recorded by the upstream tag."
+          else
+            echo "::warning::The recorded influxdb-cpp commit is unavailable."
+            echo "::warning::Using its current default branch as fallback."
+
+            git submodule deinit \
+              --force \
+              external/influxdb-cpp 2>/dev/null || true
+
+            rm -rf external/influxdb-cpp
+            rm -rf .git/modules/external/influxdb-cpp
+
+            git clone \
+              --depth 1 \
+              https://github.com/orca-zhang/influxdb-cpp.git \
+              external/influxdb-cpp
+          fi
+
+          test -f external/influxdb-cpp/influxdb.hpp
+
+      - name: Verify build inputs
+        if: >-
+          steps.image.outputs.arm64_exists != 'true' &&
+          steps.image.outputs.arm64_temp_exists != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test -f source/build2.sh
+          test -f source/external/influxdb-cpp/influxdb.hpp
+
+          test -f \
+            source/external/OpenThings-Framework-Firmware-Library/LinuxLocalServer.cpp
+
+          test -d \
+            source/external/TinyWebsockets/tiny_websockets_lib/src
+
+      - name: Build and push tagged AArch64 image
+        if: >-
+          steps.image.outputs.arm64_exists != 'true' &&
+          steps.image.outputs.arm64_temp_exists != 'true'
+        shell: bash
+        env:
+          IMAGE: ${{ steps.source.outputs.image }}
+          SOURCE_TAG: ${{ steps.source.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          docker buildx build \
+            --platform linux/arm64 \
+            --provenance=false \
+            --sbom=false \
+            --label "org.opencontainers.image.source=${SOURCE_REPOSITORY}" \
+            --label "org.opencontainers.image.version=${SOURCE_TAG}" \
+            --label "org.opencontainers.image.revision=${SOURCE_COMMIT}" \
+            --label "org.opencontainers.image.title=OpenSprinkler OSPi AArch64" \
+            --tag "${IMAGE}:${SOURCE_TAG}-aarch64" \
+            --cache-from "type=gha,scope=opensprinkler-aarch64" \
+            --cache-to "type=gha,mode=max,scope=opensprinkler-aarch64" \
+            --push \
+            --file - \
+            ./source <<'DOCKERFILE'
+          FROM debian:bookworm-slim AS os-build
+
+          ENV DEBIAN_FRONTEND=noninteractive
+
+          RUN apt-get update \
+           && apt-get install -y --no-install-recommends \
+                bash \
+                g++ \
+                libmosquittopp-dev \
+                libssl-dev \
+                libi2c-dev \
+                libmodbus-dev \
+                libbluetooth-dev \
+                libcurl4-openssl-dev \
+           && rm -rf /var/lib/apt/lists/*
+
+          COPY . /OpenSprinkler
+          WORKDIR /OpenSprinkler
+
+          RUN GPIO_SIMULATION=1 bash ./build2.sh
+
+          FROM debian:bookworm-slim
+
+          ENV DEBIAN_FRONTEND=noninteractive
+
+          RUN apt-get update \
+           && apt-get install -y --no-install-recommends \
+                ca-certificates \
+                libstdc++6 \
+                libmosquittopp1 \
+                libssl3 \
+                libcurl4 \
+                libi2c0 \
+                libmodbus5 \
+                libbluetooth3 \
+           && rm -rf /var/lib/apt/lists/*
+
+          RUN mkdir -p /OpenSprinkler /data/logs
+
+          COPY --from=os-build \
+            /OpenSprinkler/OpenSprinkler \
+            /OpenSprinkler/OpenSprinkler
+
+          WORKDIR /OpenSprinkler
+
+          VOLUME ["/data"]
+
+          EXPOSE 8080
+
+          CMD ["/OpenSprinkler/OpenSprinkler", "-d", "/data"]
+          DOCKERFILE
+
+      - name: Preserve existing AMD64 image under architecture tag
+        if: steps.image.outputs.arm64_exists != 'true'
+        shell: bash
+        env:
+          IMAGE: ${{ steps.source.outputs.image }}
+          SOURCE_TAG: ${{ steps.source.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          AMD64_IMAGE="${IMAGE}:${SOURCE_TAG}-amd64"
+          FINAL_IMAGE="${IMAGE}:${SOURCE_TAG}"
+
+          if docker buildx imagetools inspect \
+            "${AMD64_IMAGE}" >/dev/null 2>&1; then
+
+            echo "AMD64 architecture tag already exists: ${AMD64_IMAGE}"
+          else
+            docker buildx imagetools create \
+              --tag "${AMD64_IMAGE}" \
+              "${FINAL_IMAGE}"
+
+            echo "Created AMD64 architecture tag: ${AMD64_IMAGE}"
+          fi
+
+      - name: Create multi-architecture manifest
+        if: steps.image.outputs.arm64_exists != 'true'
+        shell: bash
+        env:
+          IMAGE: ${{ steps.source.outputs.image }}
+          SOURCE_TAG: ${{ steps.source.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          AMD64_IMAGE="${IMAGE}:${SOURCE_TAG}-amd64"
+          ARM64_IMAGE="${IMAGE}:${SOURCE_TAG}-aarch64"
+          FINAL_IMAGE="${IMAGE}:${SOURCE_TAG}"
+
+          docker buildx imagetools create \
+            --tag "${FINAL_IMAGE}" \
+            "${AMD64_IMAGE}" \
+            "${ARM64_IMAGE}"
+
+          echo "Created multi-arch manifest: ${FINAL_IMAGE}"
+
+      - name: Verify published platforms
+        shell: bash
+        env:
+          IMAGE: ${{ steps.source.outputs.image }}
+          SOURCE_TAG: ${{ steps.source.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          FINAL_IMAGE="${IMAGE}:${SOURCE_TAG}"
+
+          docker buildx imagetools inspect "${FINAL_IMAGE}"
+
+          RAW_MANIFEST="$(
+            docker buildx imagetools inspect \
+              --raw \
+              "${FINAL_IMAGE}"
+          )"
+
+          if ! printf '%s' "${RAW_MANIFEST}" |
+            jq -e '
+              (.manifests // []) |
+              any(
+                .platform.os == "linux" and
+                .platform.architecture == "amd64"
+              )
+            ' >/dev/null; then
+
+            echo "::error::Final manifest does not contain linux/amd64."
+            exit 1
+          fi
+
+          if ! printf '%s' "${RAW_MANIFEST}" |
+            jq -e '
+              (.manifests // []) |
+              any(
+                .platform.os == "linux" and
+                .platform.architecture == "arm64"
+              )
+            ' >/dev/null; then
+
+            echo "::error::Final manifest does not contain linux/arm64."
+            exit 1
+          fi
+
+          echo "Final image contains linux/amd64 and linux/arm64."
+
+      - name: Workflow summary
+        if: always()
+        shell: bash
+        env:
+          IMAGE: ${{ steps.source.outputs.image }}
+          SOURCE_TAG: ${{ steps.source.outputs.tag }}
+          ARM64_EXISTS: ${{ steps.image.outputs.arm64_exists }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo "## OpenSprinkler OSPi multi-arch image"
+            echo
+            echo "- Upstream repository: \`${SOURCE_REPOSITORY}\`"
+            echo "- Upstream tag: \`${SOURCE_TAG}\`"
+            echo "- Final image: \`${IMAGE}:${SOURCE_TAG}\`"
+            echo "- Platforms: \`linux/amd64\`, \`linux/arm64\`"
+
+            if [[ "${ARM64_EXISTS}" == "true" ]]; then
+              echo "- Result: AArch64 platform already existed; build skipped"
+            else
+              echo "- Result: AArch64 image built and multi-arch manifest published"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
