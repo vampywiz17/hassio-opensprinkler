@@ -35,7 +35,7 @@ env:
 
 jobs:
   build:
-    name: Build or tag OpenSprinkler image
+    name: Build OpenSprinkler image
     runs-on: ubuntu-24.04
 
     steps:
@@ -136,17 +136,6 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install crane
-        uses: imjasonh/setup-crane@v0.4
-
-      - name: Verify crane installation
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          command -v crane
-          crane version
-
       - name: Check existing image tags
         id: image
         shell: bash
@@ -220,7 +209,9 @@ jobs:
           fi
 
       - name: Clone tagged OpenSprinkler source
-        if: steps.image.outputs.source_exists != 'true'
+        if: >-
+          steps.image.outputs.source_exists != 'true' ||
+          steps.image.outputs.addon_exists != 'true'
         shell: bash
         env:
           SOURCE_TAG: ${{ steps.source.outputs.tag }}
@@ -240,7 +231,9 @@ jobs:
           echo "Checked out ${SOURCE_TAG}: ${SOURCE_COMMIT}"
 
       - name: Initialize required upstream submodules
-        if: steps.image.outputs.source_exists != 'true'
+        if: >-
+          steps.image.outputs.source_exists != 'true' ||
+          steps.image.outputs.addon_exists != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -260,7 +253,9 @@ jobs:
             external/TinyWebsockets
 
       - name: Initialize influxdb-cpp
-        if: steps.image.outputs.source_exists != 'true'
+        if: >-
+          steps.image.outputs.source_exists != 'true' ||
+          steps.image.outputs.addon_exists != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -293,7 +288,9 @@ jobs:
           test -f external/influxdb-cpp/influxdb.hpp
 
       - name: Verify build inputs
-        if: steps.image.outputs.source_exists != 'true'
+        if: >-
+          steps.image.outputs.source_exists != 'true' ||
+          steps.image.outputs.addon_exists != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -308,7 +305,9 @@ jobs:
             source/external/TinyWebsockets/tiny_websockets_lib/src
 
       - name: Build and push multi-arch image
-        if: steps.image.outputs.source_exists != 'true'
+        if: >-
+          steps.image.outputs.source_exists != 'true' ||
+          steps.image.outputs.addon_exists != 'true'
         shell: bash
         env:
           IMAGE: ${{ steps.source.outputs.image }}
@@ -383,42 +382,6 @@ jobs:
           CMD ["/OpenSprinkler/OpenSprinkler", "-d", "/data"]
           DOCKERFILE
 
-      - name: Create add-on version tag from existing firmware image
-        if: >-
-          steps.image.outputs.source_exists == 'true' &&
-          steps.image.outputs.addon_exists != 'true'
-        shell: bash
-        env:
-          IMAGE: ${{ steps.source.outputs.image }}
-          SOURCE_TAG: ${{ steps.source.outputs.tag }}
-          ADDON_VERSION: ${{ steps.source.outputs.addon_version }}
-        run: |
-          set -euo pipefail
-
-          SOURCE_IMAGE="${IMAGE}:${SOURCE_TAG}"
-          ADDON_IMAGE="${IMAGE}:${ADDON_VERSION}"
-
-          echo "Source image: ${SOURCE_IMAGE}"
-          echo "New add-on tag: ${ADDON_IMAGE}"
-
-          crane tag \
-            "${SOURCE_IMAGE}" \
-            "${ADDON_VERSION}"
-
-          SOURCE_DIGEST="$(crane digest "${SOURCE_IMAGE}")"
-          ADDON_DIGEST="$(crane digest "${ADDON_IMAGE}")"
-
-          echo "Source digest: ${SOURCE_DIGEST}"
-          echo "Add-on digest: ${ADDON_DIGEST}"
-
-          if [[ "${SOURCE_DIGEST}" != "${ADDON_DIGEST}" ]]; then
-            echo "::error::The new tag does not reference the source manifest."
-            exit 1
-          fi
-
-          echo "Created add-on version tag:"
-          echo "${ADDON_IMAGE}"
-
       - name: Verify published image tags
         if: >-
           steps.image.outputs.source_exists != 'true' ||
@@ -491,11 +454,9 @@ jobs:
             echo "- Platforms: \`linux/amd64\`, \`linux/arm64\`"
             echo
 
-            if [[ "${SOURCE_EXISTS}" != "true" ]]; then
-              echo "- Result: firmware built and both tags published"
-            elif [[ "${ADDON_EXISTS}" != "true" ]]; then
-              echo "- Result: existing firmware image tagged as ${ADDON_VERSION}"
-            else
+            if [[ "${SOURCE_EXISTS}" == "true" && "${ADDON_EXISTS}" == "true" ]]; then
               echo "- Result: both complete image tags already existed; nothing changed"
+            else
+              echo "- Result: image rebuilt and both tags published"
             fi
           } >> "${GITHUB_STEP_SUMMARY}"
