@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0 (OpenSprinkler 2.4.0(220))
+
+- Update from source: https://github.com/opensprinklershop/OpenSprinkler-Firmware/releases/tag/v240_220
+
 ## 0.0.8 (OpenSprinkler 2.4.0(219))
 
 - Change base firmware version to OpenSprinklerShop release v240_219
