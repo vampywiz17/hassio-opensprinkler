@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.2 (OpenSprinkler 2.4.0(220))
+
+- Fixed the container startup failure caused by a duplicate `/data` mount point
+- Moved the Supervisor-managed private data mount to `/addon_data`
+- Kept the writable `addon_config` storage mounted at `/data` so OpenSprinkler data remains accessible from Home Assistant
+
 ## 0.1.1 (OpenSprinkler 2.4.0(220)) ⚠️ DATA MIGRATION
 
 ⚠️ **IMPORTANT: Before updating, create a backup of your OpenSprinkler add-on data. Data loss may occur during this update.**
@@ -34,7 +40,7 @@
    - Support for RS485 Modbus stations ([See also here](https://opensprinklershop.de/en/zonen-mit-rs485-modbus-steuern/?v=15fc885b9ab6))
    - Monitoring and Control: New option “Reset in (s)” for a time-controlled reset of the monitor status
    - Latch: Stop all irrigation circuits: If no program or zone is running and this function is called, all zones will receive the stop impulse again
-   - Virtual sensors for ETO and Radiation (requires weather service that supports this)
+   - Virtual sensors for ETO and Radiation (requires weather service that supports it)
    - Fix for some W5500 adapters, adapted to 40MHz
    - Calculation of sunrise and sunset using internal formulas (instead of weather service)
    - Latest master branch of OpenSprinkler-Firmware installed (11.07.2025)
@@ -43,7 +49,7 @@
  
 ## 0.0.6 (OpenSprinkler 2.3.3(175))
 
-- Change base firmware version to 2.3.3(175):
+- Change base firmware version to OpenSprinkler 2.3.3(175):
    - Added monitor and control feature "time"
 
 ## 0.0.5 (OpenSprinkler 2.3.3(174))
