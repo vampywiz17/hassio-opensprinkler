@@ -3,7 +3,7 @@ description: Home Assistant add-on for OpenSprinkler OSPi.
 url: https://github.com/vampywiz17/hassio-opensprinkler
 
 image: ghcr.io/vampywiz17/opensprinkler-ospi
-version: "0.1.0"
+version: "0.1.1"
 
 slug: opensprinkler
 
