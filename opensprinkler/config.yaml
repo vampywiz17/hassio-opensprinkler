@@ -20,6 +20,11 @@ panel_icon: "mdi:sprinkler-variant"
 startup: services
 boot: auto
 
+map:
+  - type: addon_config
+    path: /data
+    read_only: false
+
 ports:
   8080/tcp: 5557
 
