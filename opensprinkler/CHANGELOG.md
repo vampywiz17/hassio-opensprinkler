@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.1 (OpenSprinkler 2.4.0(220)) ⚠️ DATA MIGRATION
+
+⚠️ **IMPORTANT: Before updating, create a backup of your OpenSprinkler add-on data. Data loss may occur during this update.**
+
+- Changed the `/data` directory mount location to the Home Assistant add-on configuration storage (`/addon_configs/opensprinkler`)
+- Updated the add-on storage handling to use the recommended Home Assistant add-on configuration mapping
+- Due to this storage migration, existing OpenSprinkler configuration, logs, and runtime data may not be preserved automatically
+- Restore your data from a backup after the update if required
+
 ## 0.1.0 (OpenSprinkler 2.4.0(220))
 
 - Update from source: https://github.com/opensprinklershop/OpenSprinkler-Firmware/releases/tag/v240_220
