@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3 (OpenSprinkler 2.4.0(222))
+
+- Bump firmware version v240_222
+
 ## 0.1.2 (OpenSprinkler 2.4.0(220))
 
 - Fixed the container startup failure caused by a duplicate `/data` mount point
