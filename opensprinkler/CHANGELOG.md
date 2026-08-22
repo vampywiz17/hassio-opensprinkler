@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.7 (OpenSprinkler 2.4.0(227))
+
+- Bump firmware version v240_227
+
 ## 0.1.6 (OpenSprinkler 2.4.0(226))
 
 - Bump firmware version v240_226
