@@ -4,34 +4,56 @@ on:
   workflow_dispatch:
     inputs:
       source_tag:
-        description: "Upstream tag, például v240_219. Üresen a legújabb tag épül."
+        description: "Upstream firmware tag, például v240_227. Üresen a legújabb tag épül."
         required: false
         type: string
 
-      addon_version:
-        description: "Home Assistant add-on verzió, például 0.0.8"
+      ui_version:
+        description: "OpenSprinkler UI verzió"
         required: true
-        default: "0.0.8"
+        default: "auto"
+        type: choice
+        options:
+          - auto
+          - 2.4.0.227
+          - 2.4.0.226
+          - 2.4.0.225
+          - 2.4.0.224
+          - 2.4.0.223
+          - 2.4.0.222
+          - 2.4.0.221
+          - 2.4.0.220
+          - 2.4.0.219
+          - 2.4.0.217
+          - 2.4.0.216
+          - 2.4.0.215
+          - 2.4.0.213
+          - 2.4.0.212
+          - 2.3.0
+          - 2.2.1.5
+          - 2.2.1
+
+      addon_version:
+        description: "Home Assistant add-on verzió, például 0.1.8"
+        required: true
+        default: "0.1.8"
         type: string
 
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - ".github/workflows/build-opensprinkler-ospi.yml"
 
 permissions:
   contents: read
   packages: write
 
+
 concurrency:
   group: opensprinkler-ospi-multiarch
   cancel-in-progress: false
 
+
 env:
   SOURCE_REPOSITORY: https://github.com/opensprinklershop/OpenSprinkler-Firmware.git
   IMAGE_NAME: opensprinkler-ospi
+
 
 jobs:
   build:
@@ -39,6 +61,11 @@ jobs:
     runs-on: ubuntu-24.04
 
     steps:
+
+      # ------------------------------------------------------------
+      # Determine firmware / add-on versions
+      # ------------------------------------------------------------
+
       - name: Determine upstream and add-on versions
         id: source
         shell: bash
@@ -47,6 +74,8 @@ jobs:
           REQUESTED_ADDON_VERSION: ${{ inputs.addon_version }}
         run: |
           set -euo pipefail
+
+          echo "Finding available upstream firmware tags..."
 
           ALL_TAGS="$(
             git ls-remote --tags --refs "${SOURCE_REPOSITORY}" |
@@ -63,20 +92,24 @@ jobs:
           fi
 
           if [[ -n "${REQUESTED_TAG}" ]]; then
+
             if [[ ! "${REQUESTED_TAG}" =~ ^v[0-9]+_[0-9]+$ ]]; then
               echo "::error::Invalid upstream tag format: ${REQUESTED_TAG}"
-              echo "::error::Expected format: v240_219"
+              echo "::error::Expected format: v240_227"
               exit 1
             fi
 
             if ! printf '%s\n' "${ALL_TAGS}" |
               grep -Fxq "${REQUESTED_TAG}"; then
+
               echo "::error::Upstream tag does not exist: ${REQUESTED_TAG}"
               exit 1
             fi
 
             SOURCE_TAG="${REQUESTED_TAG}"
+
           else
+
             SOURCE_TAG="$(
               printf '%s\n' "${ALL_TAGS}" |
                 awk -F_ '
@@ -94,6 +127,7 @@ jobs:
                 tail -n 1 |
                 awk '{print $3}'
             )"
+
           fi
 
           if [[ -z "${SOURCE_TAG}" ]]; then
@@ -101,33 +135,49 @@ jobs:
             exit 1
           fi
 
+
           ADDON_VERSION="${REQUESTED_ADDON_VERSION}"
 
           if [[ ! "${ADDON_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::Invalid add-on version: ${ADDON_VERSION}"
-            echo "::error::Expected format: 0.0.8"
+            echo "::error::Expected format: 0.1.8"
             exit 1
           fi
 
+
           OWNER="${GITHUB_REPOSITORY_OWNER,,}"
           IMAGE="ghcr.io/${OWNER}/${IMAGE_NAME}"
+
 
           echo "tag=${SOURCE_TAG}" >> "${GITHUB_OUTPUT}"
           echo "addon_version=${ADDON_VERSION}" >> "${GITHUB_OUTPUT}"
           echo "image=${IMAGE}" >> "${GITHUB_OUTPUT}"
 
+
+          echo
           echo "Selected upstream tag: ${SOURCE_TAG}"
           echo "Selected add-on version: ${ADDON_VERSION}"
-          echo "Firmware image: ${IMAGE}:${SOURCE_TAG}"
-          echo "Add-on image: ${IMAGE}:${ADDON_VERSION}"
+          echo
+          echo "Firmware image:"
+          echo "  ${IMAGE}:${SOURCE_TAG}"
+          echo
+          echo "Add-on image:"
+          echo "  ${IMAGE}:${ADDON_VERSION}"
+
+
+      # ------------------------------------------------------------
+      # Build environment
+      # ------------------------------------------------------------
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
 
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
 
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -136,87 +186,20 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Check existing image tags
-        id: image
-        shell: bash
-        env:
-          IMAGE: ${{ steps.source.outputs.image }}
-          SOURCE_TAG: ${{ steps.source.outputs.tag }}
-          ADDON_VERSION: ${{ steps.source.outputs.addon_version }}
-        run: |
-          set -euo pipefail
 
-          SOURCE_IMAGE="${IMAGE}:${SOURCE_TAG}"
-          ADDON_IMAGE="${IMAGE}:${ADDON_VERSION}"
-
-          has_platforms() {
-            local target="$1"
-
-            if ! docker buildx imagetools inspect \
-              "${target}" >/dev/null 2>&1; then
-              return 1
-            fi
-
-            local manifest
-            manifest="$(
-              docker buildx imagetools inspect \
-                --raw \
-                "${target}"
-            )"
-
-            local has_amd64
-            local has_arm64
-
-            has_amd64="$(
-              printf '%s' "${manifest}" |
-                jq -r '
-                  (.manifests // []) |
-                  any(
-                    .platform.os == "linux" and
-                    .platform.architecture == "amd64"
-                  )
-                '
-            )"
-
-            has_arm64="$(
-              printf '%s' "${manifest}" |
-                jq -r '
-                  (.manifests // []) |
-                  any(
-                    .platform.os == "linux" and
-                    .platform.architecture == "arm64"
-                  )
-                '
-            )"
-
-            [[ "${has_amd64}" == "true" && "${has_arm64}" == "true" ]]
-          }
-
-          if has_platforms "${SOURCE_IMAGE}"; then
-            echo "source_exists=true" >> "${GITHUB_OUTPUT}"
-            echo "Complete firmware image exists: ${SOURCE_IMAGE}"
-          else
-            echo "source_exists=false" >> "${GITHUB_OUTPUT}"
-            echo "Firmware image is missing or incomplete: ${SOURCE_IMAGE}"
-          fi
-
-          if has_platforms "${ADDON_IMAGE}"; then
-            echo "addon_exists=true" >> "${GITHUB_OUTPUT}"
-            echo "Complete add-on image exists: ${ADDON_IMAGE}"
-          else
-            echo "addon_exists=false" >> "${GITHUB_OUTPUT}"
-            echo "Add-on image is missing or incomplete: ${ADDON_IMAGE}"
-          fi
+      # ------------------------------------------------------------
+      # Clone OpenSprinkler
+      # ------------------------------------------------------------
 
       - name: Clone tagged OpenSprinkler source
-        if: >-
-          steps.image.outputs.source_exists != 'true' ||
-          steps.image.outputs.addon_exists != 'true'
         shell: bash
         env:
           SOURCE_TAG: ${{ steps.source.outputs.tag }}
         run: |
           set -euo pipefail
+
+          echo "Cloning OpenSprinkler firmware:"
+          echo "  ${SOURCE_TAG}"
 
           git clone \
             --branch "${SOURCE_TAG}" \
@@ -228,12 +211,18 @@ jobs:
           SOURCE_COMMIT="$(git -C source rev-parse HEAD)"
 
           echo "SOURCE_COMMIT=${SOURCE_COMMIT}" >> "${GITHUB_ENV}"
-          echo "Checked out ${SOURCE_TAG}: ${SOURCE_COMMIT}"
+
+          echo
+          echo "Checked out:"
+          echo "  Tag:    ${SOURCE_TAG}"
+          echo "  Commit: ${SOURCE_COMMIT}"
+
+
+      # ------------------------------------------------------------
+      # Required submodules
+      # ------------------------------------------------------------
 
       - name: Initialize required upstream submodules
-        if: >-
-          steps.image.outputs.source_exists != 'true' ||
-          steps.image.outputs.addon_exists != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -252,10 +241,12 @@ jobs:
             --force \
             external/TinyWebsockets
 
+
+      # ------------------------------------------------------------
+      # influxdb-cpp
+      # ------------------------------------------------------------
+
       - name: Initialize influxdb-cpp
-        if: >-
-          steps.image.outputs.source_exists != 'true' ||
-          steps.image.outputs.addon_exists != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -268,7 +259,9 @@ jobs:
             external/influxdb-cpp; then
 
             echo "Using the influxdb-cpp commit recorded by the upstream tag."
+
           else
+
             echo "::warning::The recorded influxdb-cpp commit is unavailable."
             echo "::warning::Using the current default branch as fallback."
 
@@ -283,19 +276,227 @@ jobs:
               --depth 1 \
               https://github.com/orca-zhang/influxdb-cpp.git \
               external/influxdb-cpp
+
           fi
 
           test -f external/influxdb-cpp/influxdb.hpp
 
+
+      # ------------------------------------------------------------
+      # Configure OpenSprinkler UI
+      # ------------------------------------------------------------
+
+      - name: Configure OpenSprinkler UI version
+        id: ui
+        shell: bash
+        env:
+          REQUESTED_UI_VERSION: ${{ inputs.ui_version }}
+        run: |
+          set -euo pipefail
+
+
+          DEFINES_FILE="source/defines.h"
+
+          if [[ ! -f "${DEFINES_FILE}" ]]; then
+            echo "::error::defines.h does not exist:"
+            echo "::error::${DEFINES_FILE}"
+            exit 1
+          fi
+
+
+          # --------------------------------------------------------
+          # Read firmware version from upstream source
+          #
+          # Example:
+          #
+          # OS_FW_VERSION = 240
+          # OS_FW_MINOR   = 227
+          #
+          # becomes:
+          #
+          # 2.4.0.227
+          # --------------------------------------------------------
+
+          FW_VERSION="$(
+            grep -E '^#define[[:space:]]+OS_FW_VERSION[[:space:]]+' \
+              "${DEFINES_FILE}" |
+              awk '{print $3}'
+          )"
+
+          FW_MINOR="$(
+            grep -E '^#define[[:space:]]+OS_FW_MINOR[[:space:]]+' \
+              "${DEFINES_FILE}" |
+              awk '{print $3}'
+          )"
+
+
+          if [[ -z "${FW_VERSION}" ]]; then
+            echo "::error::Unable to determine OS_FW_VERSION."
+            exit 1
+          fi
+
+          if [[ -z "${FW_MINOR}" ]]; then
+            echo "::error::Unable to determine OS_FW_MINOR."
+            exit 1
+          fi
+
+
+          if [[ ! "${FW_VERSION}" =~ ^[0-9]+$ ]]; then
+            echo "::error::Invalid OS_FW_VERSION: ${FW_VERSION}"
+            exit 1
+          fi
+
+          if [[ ! "${FW_MINOR}" =~ ^[0-9]+$ ]]; then
+            echo "::error::Invalid OS_FW_MINOR: ${FW_MINOR}"
+            exit 1
+          fi
+
+
+          MAJOR=$((FW_VERSION / 100))
+          MINOR=$(((FW_VERSION % 100) / 10))
+          PATCH=$((FW_VERSION % 10))
+
+
+          AUTO_UI_VERSION="${MAJOR}.${MINOR}.${PATCH}.${FW_MINOR}"
+
+
+          echo
+          echo "Firmware information:"
+          echo "  OS_FW_VERSION = ${FW_VERSION}"
+          echo "  OS_FW_MINOR   = ${FW_MINOR}"
+          echo "  Full version  = ${AUTO_UI_VERSION}"
+          echo
+
+
+          # --------------------------------------------------------
+          # Select UI
+          # --------------------------------------------------------
+
+          if [[ -z "${REQUESTED_UI_VERSION}" ||
+                "${REQUESTED_UI_VERSION}" == "auto" ]]; then
+
+            UI_VERSION="${AUTO_UI_VERSION}"
+            UI_MODE="auto"
+
+          else
+
+            UI_VERSION="${REQUESTED_UI_VERSION}"
+            UI_MODE="manual"
+
+          fi
+
+
+          if [[ ! "${UI_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "::error::Invalid UI version: ${UI_VERSION}"
+            exit 1
+          fi
+
+
+          UI_URL="https://ui.opensprinklershop.de/${UI_VERSION}/js"
+
+
+          echo "UI selection:"
+          echo "  Mode:    ${UI_MODE}"
+          echo "  Version: ${UI_VERSION}"
+          echo "  URL:     ${UI_URL}"
+          echo
+
+
+          # --------------------------------------------------------
+          # Check selected UI exists
+          # --------------------------------------------------------
+
+          echo "Checking selected UI..."
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            --max-time 30 \
+            "${UI_URL}/modules/firmware.js" \
+            >/dev/null
+
+
+          curl \
+            --fail \
+            --silent \
+            --show-error \
+            --location \
+            --max-time 30 \
+            "${UI_URL}/modules/sensors.js" \
+            >/dev/null
+
+
+          echo "Selected UI exists."
+          echo
+
+
+          # --------------------------------------------------------
+          # Show current firmware default
+          # --------------------------------------------------------
+
+          echo "Current firmware UI default:"
+
+          grep -E \
+            '^#define[[:space:]]+DEFAULT_JAVASCRIPT_URL' \
+            "${DEFINES_FILE}"
+
+
+          # --------------------------------------------------------
+          # Patch DEFAULT_JAVASCRIPT_URL
+          # --------------------------------------------------------
+
+          sed -i -E \
+            's|^#define[[:space:]]+DEFAULT_JAVASCRIPT_URL[[:space:]]+.*$|#define DEFAULT_JAVASCRIPT_URL "'"${UI_URL}"'"|' \
+            "${DEFINES_FILE}"
+
+
+          echo
+          echo "Patched firmware UI default:"
+
+          grep -E \
+            '^#define[[:space:]]+DEFAULT_JAVASCRIPT_URL' \
+            "${DEFINES_FILE}"
+
+
+          # --------------------------------------------------------
+          # Verify patch
+          # --------------------------------------------------------
+
+          if ! grep -Fq \
+            "#define DEFAULT_JAVASCRIPT_URL \"${UI_URL}\"" \
+            "${DEFINES_FILE}"; then
+
+            echo "::error::Unable to patch DEFAULT_JAVASCRIPT_URL."
+            exit 1
+          fi
+
+
+          # --------------------------------------------------------
+          # Export results
+          # --------------------------------------------------------
+
+          echo "UI_VERSION=${UI_VERSION}" >> "${GITHUB_ENV}"
+          echo "UI_URL=${UI_URL}" >> "${GITHUB_ENV}"
+          echo "UI_MODE=${UI_MODE}" >> "${GITHUB_ENV}"
+
+          echo "version=${UI_VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "url=${UI_URL}" >> "${GITHUB_OUTPUT}"
+          echo "mode=${UI_MODE}" >> "${GITHUB_OUTPUT}"
+
+
+      # ------------------------------------------------------------
+      # Verify source before build
+      # ------------------------------------------------------------
+
       - name: Verify build inputs
-        if: >-
-          steps.image.outputs.source_exists != 'true' ||
-          steps.image.outputs.addon_exists != 'true'
         shell: bash
         run: |
           set -euo pipefail
 
           test -f source/build2.sh
+          test -f source/defines.h
           test -f source/external/influxdb-cpp/influxdb.hpp
 
           test -f \
@@ -304,17 +505,44 @@ jobs:
           test -d \
             source/external/TinyWebsockets/tiny_websockets_lib/src
 
+
+          echo
+          echo "Build input verification successful."
+          echo
+          echo "Firmware:"
+          echo "  ${{ steps.source.outputs.tag }}"
+          echo
+          echo "OpenSprinkler UI:"
+          echo "  ${{ steps.ui.outputs.version }}"
+          echo
+          echo "UI URL:"
+          echo "  ${{ steps.ui.outputs.url }}"
+
+
+      # ------------------------------------------------------------
+      # Build multiarch Docker image
+      # ------------------------------------------------------------
+
       - name: Build and push multi-arch image
-        if: >-
-          steps.image.outputs.source_exists != 'true' ||
-          steps.image.outputs.addon_exists != 'true'
         shell: bash
         env:
           IMAGE: ${{ steps.source.outputs.image }}
           SOURCE_TAG: ${{ steps.source.outputs.tag }}
           ADDON_VERSION: ${{ steps.source.outputs.addon_version }}
+          UI_VERSION: ${{ steps.ui.outputs.version }}
+          UI_URL: ${{ steps.ui.outputs.url }}
         run: |
           set -euo pipefail
+
+          echo
+          echo "Building OpenSprinkler image"
+          echo
+          echo "Firmware:      ${SOURCE_TAG}"
+          echo "UI version:    ${UI_VERSION}"
+          echo "UI URL:        ${UI_URL}"
+          echo "Add-on version:${ADDON_VERSION}"
+          echo
+
 
           docker buildx build \
             --platform linux/amd64,linux/arm64 \
@@ -324,6 +552,9 @@ jobs:
             --label "org.opencontainers.image.version=${SOURCE_TAG}" \
             --label "org.opencontainers.image.revision=${SOURCE_COMMIT}" \
             --label "org.opencontainers.image.title=OpenSprinkler OSPi Multi-Arch" \
+            --label "io.opensprinkler.firmware=${SOURCE_TAG}" \
+            --label "io.opensprinkler.ui.version=${UI_VERSION}" \
+            --label "io.opensprinkler.ui.url=${UI_URL}" \
             --tag "${IMAGE}:${SOURCE_TAG}" \
             --tag "${IMAGE}:${ADDON_VERSION}" \
             --cache-from "type=gha" \
@@ -331,6 +562,7 @@ jobs:
             --push \
             --file - \
             ./source <<'DOCKERFILE'
+
           FROM debian:bookworm-slim AS os-build
 
           ENV DEBIAN_FRONTEND=noninteractive
@@ -347,14 +579,20 @@ jobs:
                 libcurl4-openssl-dev \
            && rm -rf /var/lib/apt/lists/*
 
+
           COPY . /OpenSprinkler
+
           WORKDIR /OpenSprinkler
 
+
           RUN GPIO_SIMULATION=1 bash ./build2.sh
+
+
 
           FROM debian:bookworm-slim
 
           ENV DEBIAN_FRONTEND=noninteractive
+
 
           RUN apt-get update \
            && apt-get install -y --no-install-recommends \
@@ -368,24 +606,35 @@ jobs:
                 libbluetooth3 \
            && rm -rf /var/lib/apt/lists/*
 
-          RUN mkdir -p /OpenSprinkler /data/logs
+
+          RUN mkdir -p \
+                /OpenSprinkler \
+                /data/logs
+
 
           COPY --from=os-build \
             /OpenSprinkler/OpenSprinkler \
             /OpenSprinkler/OpenSprinkler
 
+
           WORKDIR /OpenSprinkler
 
+
           VOLUME ["/data"]
+
           EXPOSE 8080
 
+
           CMD ["/OpenSprinkler/OpenSprinkler", "-d", "/data"]
+
           DOCKERFILE
 
+
+      # ------------------------------------------------------------
+      # Verify published image
+      # ------------------------------------------------------------
+
       - name: Verify published image tags
-        if: >-
-          steps.image.outputs.source_exists != 'true' ||
-          steps.image.outputs.addon_exists != 'true'
         shell: bash
         env:
           IMAGE: ${{ steps.source.outputs.image }}
@@ -394,17 +643,24 @@ jobs:
         run: |
           set -euo pipefail
 
+
           verify_platforms() {
+
             local target="$1"
 
-            echo "Inspecting ${target}"
+            echo
+            echo "Inspecting:"
+            echo "  ${target}"
+
 
             local manifest
+
             manifest="$(
               docker buildx imagetools inspect \
                 --raw \
                 "${target}"
             )"
+
 
             printf '%s' "${manifest}" |
               jq -e '
@@ -415,6 +671,7 @@ jobs:
                 )
               ' >/dev/null
 
+
             printf '%s' "${manifest}" |
               jq -e '
                 (.manifests // []) |
@@ -423,14 +680,27 @@ jobs:
                   .platform.architecture == "arm64"
                 )
               ' >/dev/null
+
+
+            echo "  linux/amd64: OK"
+            echo "  linux/arm64: OK"
           }
 
+
           verify_platforms "${IMAGE}:${SOURCE_TAG}"
+
           verify_platforms "${IMAGE}:${ADDON_VERSION}"
 
+
+          echo
           echo "Both image tags contain:"
           echo "  linux/amd64"
           echo "  linux/arm64"
+
+
+      # ------------------------------------------------------------
+      # Workflow summary
+      # ------------------------------------------------------------
 
       - name: Workflow summary
         if: always()
@@ -439,24 +709,47 @@ jobs:
           IMAGE: ${{ steps.source.outputs.image }}
           SOURCE_TAG: ${{ steps.source.outputs.tag }}
           ADDON_VERSION: ${{ steps.source.outputs.addon_version }}
-          SOURCE_EXISTS: ${{ steps.image.outputs.source_exists }}
-          ADDON_EXISTS: ${{ steps.image.outputs.addon_exists }}
+          UI_VERSION: ${{ steps.ui.outputs.version }}
+          UI_URL: ${{ steps.ui.outputs.url }}
+          UI_MODE: ${{ steps.ui.outputs.mode }}
         run: |
           set -euo pipefail
+
 
           {
             echo "## OpenSprinkler OSPi multi-arch image"
             echo
+
             echo "- Upstream repository: \`${SOURCE_REPOSITORY}\`"
-            echo "- Upstream tag: \`${SOURCE_TAG}\`"
-            echo "- Firmware image: \`${IMAGE}:${SOURCE_TAG}\`"
-            echo "- Add-on image: \`${IMAGE}:${ADDON_VERSION}\`"
-            echo "- Platforms: \`linux/amd64\`, \`linux/arm64\`"
+            echo "- Firmware tag: \`${SOURCE_TAG:-unknown}\`"
+            echo "- UI selection mode: \`${UI_MODE:-unknown}\`"
+            echo "- UI version: \`${UI_VERSION:-unknown}\`"
+            echo "- UI URL: \`${UI_URL:-unknown}\`"
+            echo "- Add-on version: \`${ADDON_VERSION:-unknown}\`"
+
             echo
 
-            if [[ "${SOURCE_EXISTS}" == "true" && "${ADDON_EXISTS}" == "true" ]]; then
-              echo "- Result: both complete image tags already existed; nothing changed"
-            else
-              echo "- Result: image rebuilt and both tags published"
+            if [[ -n "${IMAGE:-}" && -n "${SOURCE_TAG:-}" ]]; then
+              echo "- Firmware image: \`${IMAGE}:${SOURCE_TAG}\`"
             fi
+
+            if [[ -n "${IMAGE:-}" && -n "${ADDON_VERSION:-}" ]]; then
+              echo "- Add-on image: \`${IMAGE}:${ADDON_VERSION}\`"
+            fi
+
+            echo
+            echo "- Platforms: \`linux/amd64\`, \`linux/arm64\`"
+
+            echo
+            echo "### UI configuration"
+            echo
+
+            if [[ "${UI_MODE:-}" == "auto" ]]; then
+              echo "The UI version was derived automatically from the firmware version."
+            elif [[ "${UI_MODE:-}" == "manual" ]]; then
+              echo "The UI version was selected manually."
+            else
+              echo "UI configuration was not completed."
+            fi
+
           } >> "${GITHUB_STEP_SUMMARY}"
