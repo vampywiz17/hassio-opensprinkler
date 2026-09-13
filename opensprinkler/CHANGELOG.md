@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.8 (OpenSprinkler 2.4.0(227))
+
+- Fix web interface compatibility issues with OpenSprinkler 2.4.0(227)
+- Pin the web UI to a compatible version to prevent broken or blank pages after upstream UI changes
+- Improve stability by avoiding unexpected changes from the development UI
+- Add support for selecting a different compatible UI version when needed
+
 ## 0.1.7 (OpenSprinkler 2.4.0(227))
 
 - Bump firmware version v240_227
