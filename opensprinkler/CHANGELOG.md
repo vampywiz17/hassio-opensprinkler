@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.9 (OpenSprinkler 2.4.0(228))
+
+- Bump firmware version v240_228
+
 ## 0.1.8 (OpenSprinkler 2.4.0(227))
 
 - Fix web interface compatibility issues with OpenSprinkler 2.4.0(227)
