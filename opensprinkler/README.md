@@ -18,6 +18,8 @@ You access web interface at: http://ha_hostname:5557 (default). Web interface de
 
 Persistent files are saved to /data folder (Home Assistant default). If you delete these files, your config are lost!
 
+If you have affect any UI problem (not loaded it for example) go to http://ha_hostname:5557/su and click "Reset UI Source". It set it up the coresponding version of UI Source.
+
 ## Home Assistant Integration
 
 You able to use it with Home Assistant following integration:
