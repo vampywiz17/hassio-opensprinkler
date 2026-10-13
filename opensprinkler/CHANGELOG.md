@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.11 (OpenSprinkler 2.4.0(229))
+## 0.1.12 (OpenSprinkler 2.4.0(229))
 
 - Fix UI version mismatch
 
