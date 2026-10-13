@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.10 (OpenSprinkler 2.4.0(229))
+
+- Bump firmware version v240_229
+- Fix Linux rename_file to respect configured data directory (the PR are not merged, i fix in with build state. See these PR: https://github.com/opensprinklershop/OpenSprinkler-Firmware/pull/9)
+
 ## 0.1.9 (OpenSprinkler 2.4.0(228))
 
 - Bump firmware version v240_228
