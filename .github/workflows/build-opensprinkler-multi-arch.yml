@@ -217,6 +217,22 @@ jobs:
           echo "  Tag:    ${SOURCE_TAG}"
           echo "  Commit: ${SOURCE_COMMIT}"
 
+      - name: Apply OpenSprinkler Linux data directory fix (PR #9)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd source
+
+          curl --fail --silent --show-error --location \
+            --retry 3 \
+            https://github.com/opensprinklershop/OpenSprinkler-Firmware/pull/9.patch \
+            -o /tmp/opensprinkler-pr9.patch
+
+          git apply --check /tmp/opensprinkler-pr9.patch
+          git apply /tmp/opensprinkler-pr9.patch
+
+          echo "Successfully applied OpenSprinkler PR #9"
 
       # ------------------------------------------------------------
       # Required submodules
@@ -581,10 +597,14 @@ jobs:
 
 
           COPY . /OpenSprinkler
-
+          
           WORKDIR /OpenSprinkler
-
-
+          
+          # Fix upstream build2.sh: include loop_guard.cpp
+          RUN sed -i \
+              's/main.cpp \\/main.cpp loop_guard.cpp \\/' \
+              build2.sh
+          
           RUN GPIO_SIMULATION=1 bash ./build2.sh
 
 
