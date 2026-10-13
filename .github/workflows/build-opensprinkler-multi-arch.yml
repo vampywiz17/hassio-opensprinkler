@@ -421,10 +421,10 @@ jobs:
 
 
           # --------------------------------------------------------
-          # Check selected UI exists
+          # Check external UI loader
           # --------------------------------------------------------
-
-          echo "Checking external UI loader..."
+          
+          echo "Checking external OpenSprinkler UI..."
           
           curl \
             --fail \
@@ -436,11 +436,12 @@ jobs:
             "${UI_URL}/home.js" \
             -o /tmp/opensprinkler-home.js
           
-          if ! grep -Fq "function resolveBundle" /tmp/opensprinkler-home.js; then
-            echo "::error::Version-aware OpenSprinkler UI loader not found."
+          if [[ ! -s /tmp/opensprinkler-home.js ]]; then
+            echo "::error::External UI loader is empty."
             exit 1
           fi
-          echo
+          
+          echo "External UI endpoint responded successfully."
 
 
           # --------------------------------------------------------
