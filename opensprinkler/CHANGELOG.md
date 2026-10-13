@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.11 (OpenSprinkler 2.4.0(229))
+
+- Fix UI version mismatch
+
 ## 0.1.10 (OpenSprinkler 2.4.0(229))
 
 - Bump firmware version v240_229
