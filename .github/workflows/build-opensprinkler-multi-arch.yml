@@ -410,7 +410,7 @@ jobs:
           fi
 
 
-          UI_URL="https://ui.opensprinklershop.de/${UI_VERSION}/js"
+          UI_URL="https://ui.opensprinklershop.de/js"
 
 
           echo "UI selection:"
@@ -424,29 +424,22 @@ jobs:
           # Check selected UI exists
           # --------------------------------------------------------
 
-          echo "Checking selected UI..."
-
+          echo "Checking external UI loader..."
+          
           curl \
             --fail \
             --silent \
             --show-error \
             --location \
+            --retry 3 \
             --max-time 30 \
-            "${UI_URL}/modules/firmware.js" \
-            >/dev/null
-
-
-          curl \
-            --fail \
-            --silent \
-            --show-error \
-            --location \
-            --max-time 30 \
-            "${UI_URL}/modules/sensors.js" \
-            >/dev/null
-
-
-          echo "Selected UI exists."
+            "${UI_URL}/home.js" \
+            -o /tmp/opensprinkler-home.js
+          
+          if ! grep -Fq "function resolveBundle" /tmp/opensprinkler-home.js; then
+            echo "::error::Version-aware OpenSprinkler UI loader not found."
+            exit 1
+          fi
           echo
 
 
