@@ -6,13 +6,6 @@ Whether you are at your desktop, laptop, tablet or phone; whether you are at hom
 
 ![Supports amd64 Architecture][amd64-shield] ![Supports arm64 Architecture][arm64-shield]
 
-> [!WARNING]
-> Currently, with a upstream project (opensprinklershop.de firmware) contain a bug, that it cause it not possible to save the analog sensor and monitor config. (it lost after addon restart) It is a small bug and easy to fix
-> it, but need to change it via upstream firmware... I dont plan to fork it and fix it , because no capacity to maintain a firmware fork also. The best that i can do is open a PR and wait the the original developer are
-> fix it. You able to follow these PR changes here: https://github.com/opensprinklershop/OpenSprinkler-Firmware/pull/9
->
-> I hope it will fix soon.
-
 ## About
 
 This Add-on allows you to Install OpenSprinkler to Home Assistant. It use https://opensprinklershop.de modded firmware. The main difference that is support Analog sensor API. that mean it possible to add for example MQTT based sensors. More info: https://opensprinklershop.de/en/2023/01/29/analog-sensor-konfiguration-aktivieren/
